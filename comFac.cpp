@@ -16,10 +16,13 @@
 
 #define qMAX 1e+100
 #define qMIN 1e-100
+#define pMAX 0.999999
+#define pMIN 0.000001
 #define parMAX 100
 #define parMIN 0.01
-#define TOL 1e-6
+#define TOL 1e-8
 #define MAXIT 1000
+#define DEBUG
 
 // [[Rcpp::depends(RcppGSL)]]
 
@@ -252,7 +255,7 @@ double LTA_LTE(double s, vector<double> par_1, vector<double> par_2)
 ///  http://www.kent.ac.uk/smsas/personal/msr/rlaptrans.html                           //
 /////////////////////////////////////////////////////////////////////////////////////////
 
-double qGfromLT(double u, LTfunc_complex ltpdf, vector<double> par)
+double qGfromLT(double u, LTfunc_complex ltpdf, vector<double> par, int& err_msg)
 {
     const double tol = TOL;
     const double x0 = 1;
@@ -319,7 +322,7 @@ double qGfromLT(double u, LTfunc_complex ltpdf, vector<double> par)
     upper = qMAX;
     t = 1;
     cdf = 1;
-    pdf = 10000;
+    pdf = 100;
         
     while ( kount < maxiter && std::abs(u - cdf) > tol )
     {
@@ -375,10 +378,19 @@ double qGfromLT(double u, LTfunc_complex ltpdf, vector<double> par)
             upper = t;
         }
     }
+    
+    if(kount < maxiter && std::abs(u - cdf) < tol )
+    {
+        err_msg = 1;
+    }
+    else if(kount >= maxiter)
+    {
+        err_msg = 2;
+    }
     return t;
 }
 
-double qG(double u, LTfunc_complex LT, vector<double> par)
+double qG(double u, LTfunc_complex LT, vector<double> par, int& err_msg)
 {
     if(u == 0)
     {
@@ -386,7 +398,7 @@ double qG(double u, LTfunc_complex LT, vector<double> par)
     }
     else
     {
-        return qGfromLT(u, LT, par);
+        return qGfromLT(u, LT, par, err_msg);
     }
 }
 
@@ -525,7 +537,7 @@ double LTA1_LTE1(double s, vector<double> par_1, vector<double> par_2)
 {
     double de = par_1[0];
     double de1 = par_2[0];
-    double th1 = par_2[0];
+    double th1 = par_2[1];
 
     double psi1_LTA = exp(-pow(s,1/de)) * (pow(s, 1/de -1 )) / (- de); 
     double psi_LTA = LTA(s, par_1);
@@ -614,7 +626,7 @@ double invpsi(double u, vector<double> par, int LTfamily)
 }
 
 // to-do
-double invpsi_LTA_LTE(double u, vector<double> par_1, vector<double> par_2)
+double invpsi_LTA_LTE(double u, vector<double> par_1, vector<double> par_2, int& err_msg)
 {
     const double tol = TOL;
     const double x0 = 1;
@@ -635,8 +647,8 @@ double invpsi_LTA_LTE(double u, vector<double> par_1, vector<double> par_2)
 
     lower = 0;
     upper = qMAX;
-    t = 1;
-    LT = 0.5;
+    LT = std::min(u+2*tol, pMAX);
+    t = LT;
     LT1 = -1;
     
     while ( kount < maxiter && std::abs(u - LT) > tol )
@@ -661,6 +673,16 @@ double invpsi_LTA_LTE(double u, vector<double> par_1, vector<double> par_2)
             upper = t;
         }
     }
+    
+    if(kount < maxiter && std::abs(u - LT) < tol )
+    {
+        err_msg = 1;
+    }
+    else if(kount >= maxiter)
+    {
+        err_msg = 2;
+    }
+    
     return t;
 }
 
@@ -868,13 +890,17 @@ double denCF(NumericVector tvec, NumericMatrix DM, NumericVector parCluster,
     vector<double> uvec;
 
     NumericMatrix qvec(d, nq);
+    int err_msg;
 
     // calculate qvec for reuse, improving speed
     for(i=0; i < d; ++i)
     {
         for(m=0; m < nq; ++m)
         {
-            qvec(i,m) = qG(xl[m], LT, par_i[i]);
+            qvec(i,m) = qG(xl[m], LT, par_i[i], err_msg);
+#ifdef DEBUG
+            Rcpp::Rcout << "(i,m): " <<i<<m << " qvec(i,m)=" << qvec(i,m) << " err= " << err_msg << std::endl;
+#endif            
         }
     }
     
@@ -1010,25 +1036,28 @@ double den_LTA_LTE(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
     
     NumericMatrix qvec(d, nq);
     NumericMatrix hvec(d, nq);
+    int err_msg_1, err_msg_2;
 	
     for(i=0; i < d; ++i)
     {
         for(m=0; m < nq; ++m)
         {
-            qvec(i,m) = qG(xl[m], LT_1, par_1_i[i]);
-            hvec(i,m) = qG(xl[m], LT_2, par_2_i[i]);
+            qvec(i,m) = qG(xl[m], LT_1, par_1_i[i], err_msg_1);
+            hvec(i,m) = qG(xl[m], LT_2, par_2_i[i], err_msg_2);
 #ifdef DEBUG
-            Rcpp::Rcout << "(i,m)" << i << "," << m <<    " par_1= " << par_1_i[i][0] <<  " xl[m]= " << xl[m] <<  " qvec(i,m)= " << qvec(i,m) << " hvec(i,m) = " << hvec(i,m) << std::endl;
+            Rcpp::Rcout<<"(i,m)= "<<i<<","<<m<<" par_1= "<< par_1_i[i][0] <<" par_2= "<< par_2_i[i][0] <<","<<par_2_i[i][1] <<  " xl[m]= " << xl[m] <<  " qvec(i,m)= " << qvec(i,m) << " hvec(i,m) = " << hvec(i,m) << " err="<< err_msg_1 << "," << err_msg_2 << std::endl;
 #endif
         }
     }
     
+    int err_msg;
+    
     for(i = 0; i < d; ++i)
     {
-        invpsi_i[i] = invpsi_LTA_LTE(tvec[i], par_1_i[i], par_2_i[i]);
+        invpsi_i[i] = invpsi_LTA_LTE(tvec[i], par_1_i[i], par_2_i[i], err_msg);
         psi1inv_i[i] = LTA1_LTE1(invpsi_i[i], par_1_i[i], par_2_i[i]);
 #ifdef DEBUG
-        //Rcpp::Rcout << "invpsi_i[i] / psi1inv_i[i]: " << invpsi_i[i] << " / " << psi1inv_i[i] << std::endl;
+        Rcpp::Rcout << "err: " << err_msg << " invpsi_i[i] / psi1inv_i[i]: " << invpsi_i[i] << " / " << psi1inv_i[i] << " par "  << par_1_i[i][0] << "," << par_2_i[i][0] << "," << par_2_i[i][1]  << "," << std::endl;
 #endif
     }
     
@@ -1064,6 +1093,9 @@ double den_LTA_LTE(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
                                             break;
                                 }
                                 invG_i[i] += invG(i, j);
+#ifdef DEBUG
+                                //Rcpp::Rcout << m1<<","<<m2<<","<<m3 <<","<< m4 <<","<< i << "," << j << " invG(i,j)= " << invG(i,j) << std::endl;
+#endif
                             }
                         }
                     }
@@ -1077,7 +1109,7 @@ double den_LTA_LTE(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
 
                     den_m = exp( tem2 - tem1 );
 #ifdef DEBUG
-                    //Rcpp::Rcout << "m / den_m: " << m1<<m2<<m3<<m4 << " / " << den_m << " / " << tem1 << " / " << tem2 <<  " / " << wl[m1]*wl[m2]*wl[m3]*wl[m4]*den_m << std::endl;
+                    Rcpp::Rcout << "m/den_m/tem1/tem2/: " << m1<<m2<<m3<<m4 << " / " << den_m << " / " << tem1 << " / " << tem2 <<  " / " << std::endl;
 #endif
                     tem1 = 0;
                     tem2 = 0;
