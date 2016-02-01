@@ -1940,7 +1940,7 @@ double den_LTE_LTA(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
     {
         par_1_i[i].push_back(par[i]);
         par_1_i[i].push_back(par[i+d]);
-        par_2_i[i].push_back(par[2*d]);  // use the same one parameter for LTA
+        par_2_i[i].push_back(par[2*d+i]);  
     }
     
     LTfunc_complex LT_1, LT_2;
