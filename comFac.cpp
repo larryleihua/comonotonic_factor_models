@@ -13,6 +13,13 @@
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_sf_gamma.h>
 #include <gsl/gsl_sf_hyperg.h>
+#include <boost/math/special_functions/bessel.hpp> // for real arguments
+
+#ifdef COMPLEX_BESSEL
+#include <complex_bessel.h> // for complex arguments, https://github.com/valandil/complex_bessel
+#endif
+
+
 #include "comFac.hpp"
 
 #define qMAX 1e+100
@@ -99,6 +106,109 @@ complex<double> LTE_complex(complex<double> s, vector<double> par)
     tmp = 1.0 + pow(s, (1.0/de));
     psii = pow(tmp, (-1.0/th));
     out *= psii;
+    return out;
+}
+
+complex<double> LTA_LTE_complex(complex<double> s, vector<double> par)
+{
+    complex<double> out(1.0, 0);
+    vector<double> par1;
+    vector<double> par2;
+    par1.push_back(par[0]);
+    par2.push_back(par[1]);
+    par2.push_back(par[2]);
+    
+    out = out * LTA_complex(s, par1) * LTE_complex(s, par2);
+    return out;
+}
+
+complex<double> LTB_LTB_complex(complex<double> s, vector<double> par)
+{
+    complex<double> out(1.0, 0);
+    vector<double> par1;
+    vector<double> par2;
+    par1.push_back(par[0]);
+    par2.push_back(par[1]);
+
+    out = out * LTB_complex(s, par1) * LTB_complex(s, par2);
+    return out;
+}
+
+complex<double> LTE_LTA_complex(complex<double> s, vector<double> par)
+{
+    complex<double> out(1.0, 0);
+    vector<double> par1;
+    vector<double> par2;
+    par1.push_back(par[0]);
+    par1.push_back(par[1]);
+    par2.push_back(par[2]);
+    
+    out = out * LTE_complex(s, par1) * LTA_complex(s, par2);
+    return out;
+}
+
+// for LT of Generalized Inverse Gaussian   // to-do
+#ifdef COMPLEX_BESSEL
+// for LT of Inverse Gamma
+complex<double> LTIG_complex(complex<double> s, vector<double> par)
+{
+  complex<double> tmp;
+  complex<double> psii;
+  complex<double> out(1.0, 0);
+  double al = par[0];
+  double gal = gsl_sf_gamma(al);
+  complex<double> sroot = sqrt(s);
+  
+  tmp = sp_bessel::besselK(al, 2.0*sroot);
+  psii = 2.0 * pow(s, (al/2)) * tmp / gal;
+  out *= psii;
+  return out;
+}
+
+complex<double> LTGIG_complex(complex<double> s, vector<double> par)
+{
+    complex<double> tem1, tem2, tem3;
+    complex<double> psii;
+    complex<double> out(1.0, 0);
+    double th = par[0];
+    double la = par[1];
+    double xi = par[2];
+	
+    tem1 = pow(la / (la + 2.0*s), th / 2);
+    tem2 = sp_bessel::besselK(th, pow( (la+2.0*s)*xi, 0.5));
+    tem3 = sp_bessel::besselK(th, pow( la*xi, 0.5));
+    psii = tem1 * tem2 / tem3;
+    out *= psii;
+    return out;
+}
+#endif
+
+double LTGIG_vector(double s, vector<double> par)
+{
+    double tem1, tem2, tem3, psii;
+    double out = 1.0;
+    size_t i;
+    
+    size_t d = par.size() / 3;
+    vector<double> th;
+    vector<double> la;
+    vector<double> xi;
+
+    for(i=0;i<d;++i)
+    {
+        th.push_back(par[i]);
+        la.push_back(par[i+d]);
+        xi.push_back(par[i+2*d]);
+    }
+    
+    for(i=0; i<d; ++i)
+    {
+        tem1 = pow(la[i] / (la[i] + 2*s), th[i] / 2);
+        tem2 = boost::math::cyl_bessel_k(th[i], pow( (la[i]+2*s)*xi[i], 0.5));
+        tem3 = boost::math::cyl_bessel_k(th[i], pow( la[i]*xi[i], 0.5));
+        psii = tem1 * tem2 / tem3;
+        out *= psii;
+    }
     return out;
 }
 
@@ -292,13 +402,39 @@ double LTE(double s, vector<double> par)
     return out;
 }
 
-// one for LTA and one for LTE
-double LTA_LTE(double s, vector<double> par_1, vector<double> par_2)
+
+double LTGIG(double s, vector<double> par) 
 {
-    double out = LTA(s, par_1) * LTE(s, par_2);
+    double tem1, tem2, tem3;
+    double out;
+    double th = par[0];
+    double la = par[1];
+    double xi = par[2];
+    
+    tem1 = pow(la / (la + 2*s), th / 2);
+    tem2 = boost::math::cyl_bessel_k(th, pow( (la+2*s)*xi, 0.5));
+    tem3 = boost::math::cyl_bessel_k(th, pow( la*xi, 0.5));
+    out = tem1 * tem2 / tem3;
     return out;
 }
 
+double LTA_LTE(double s, vector<double> par1, vector<double> par2)
+{
+    double out = LTA(s, par1) * LTE(s, par2);
+    return out;
+}
+
+double LTE_LTA(double s, vector<double> par1, vector<double> par2)
+{
+    double out = LTE(s, par1) * LTA(s, par2);
+    return out;
+}
+
+double LTB_LTB(double s, vector<double> par1, vector<double> par2)
+{
+    double out = LTB(s, par1) * LTB(s, par2);
+    return out;
+}
 
 /////////////////////////////////////////////////////////////////////////////////////////
 ///  Martin Ridout                                                                     //
@@ -615,6 +751,54 @@ double LTB1_vector(double s, vector<double> par)
     return out;
 }
 
+double LTGIG1_vector(double s, vector<double> par)
+{
+    double out = 0;
+    double psi10_i, psi0_i;
+    double tem1, tem2, tmp1, tmp2, K1, K2, K3, K4;
+    size_t i;
+
+    size_t d = par.size() / 3;
+    vector<double> th;
+    vector<double> la;
+    vector<double> xi;
+
+    vector<double> par_i;
+    
+    for(i=0;i<d;++i)
+    {
+        th.push_back(par[i]);
+        la.push_back(par[i+d]);
+        xi.push_back(par[i+2*d]);
+    }
+    
+    double psiprod = LTGIG_vector(s, par);   // LT of sum of indep rv is the prod
+    for(i = 0; i < d; ++i)
+    {
+        tem1 = pow( (la[i] + 2*s)*xi[i], 0.5 );
+        tem2 = pow( la[i]*xi[i], 0.5 );
+
+        K1 = boost::math::cyl_bessel_k(th[i], tem1);
+        K2 = boost::math::cyl_bessel_k(th[i], tem2);
+        K3 = boost::math::cyl_bessel_k(th[i]-1, tem1);
+        K4 = boost::math::cyl_bessel_k(th[i]+1, tem1);
+
+        tmp1 = -(th[i]*la[i]) * (pow(la[i], th[i]/2 -1)) * pow(la[i]+2*s, -th[i]/2 -1) * K1 / K2;
+        tmp2 = - (0.5)* pow(la[i] / (la[i] + 2*s), th[i]/2) * xi[i] / tem1 / K2 * (K3 + K4);
+        psi10_i = tmp1 + tmp2;
+        
+        par_i.clear();
+        par_i.push_back(th[i]);
+        par_i.push_back(la[i]);
+        par_i.push_back(xi[i]);
+        psi0_i = LTGIG(s, par_i);
+        out += psiprod / psi0_i * psi10_i;
+    }
+    return out;
+}
+
+
+
 double LTA1_LTE1(double s, vector<double> par_1, vector<double> par_2)
 {
     double de = par_1[0];
@@ -667,6 +851,10 @@ double invpsi(double u, vector<double> par, int LTfamily)
         case 6:
             LT1_vector = &LTA1_vector;
             LT_vector = &LTA_vector;
+            break;
+        case 100:
+            LT1_vector = &LTGIG1_vector;
+            LT_vector = &LTGIG_vector;
             break;
         default:
             LT1_vector = &LTI1_vector;
@@ -1043,7 +1231,6 @@ double denFAC1(vector<double> uvec, NumericVector parFAC, int Gfamily)
 }
 
 
-
 // based on CopulaModel R package
 // xq: nodes;  wq: weights
 #define EPS 3.0e-11
@@ -1288,6 +1475,15 @@ double denCF1(NumericVector tvec, NumericMatrix DM, NumericVector parCluster,
             par_i[i].push_back(parCluster[i]); // de for i
         }
     }
+    else if(LTfamily == 100)  // LTGIG
+    {
+        for(i = 0; i < d; ++i)
+        {
+            par_i[i].push_back(parCluster[i]); // th for i
+            par_i[i].push_back(parCluster[i+d]); // la for i
+            par_i[i].push_back(parCluster[i+2*d]); // xi for i
+        }
+    }
     else
     {
         std::cout << "The LT family is not supported." << std::endl;
@@ -1323,6 +1519,12 @@ double denCF1(NumericVector tvec, NumericMatrix DM, NumericVector parCluster,
             LT = &LTA_complex;
             LT1_vector = &LTA1_vector;
             break;
+#ifdef COMPLEX_BESSEL        
+        case 100:
+            LT = &LTGIG_complex;
+            LT1_vector = &LTGIG1_vector;
+            break;
+#endif            
         default:
             LT = &LTE_complex;
             LT1_vector = &LTE1_vector;
@@ -1357,8 +1559,62 @@ double denCF1(NumericVector tvec, NumericMatrix DM, NumericVector parCluster,
 #endif
     }
     
-    // to-do: only support f=2,3 for now
-    if(nf == 2)
+    // to-do: only support f=1,2,3 for now
+    
+    if(nf == 1)
+    {
+        for(m1=0;m1<nq;++m1)
+        {    
+            uvec.clear();
+            uvec.push_back(xl[m1]);
+
+            for(j=0;j<nf;++j)  // i: row,   j: col
+            {
+                for(i=0;i<d;++i)
+                {
+                    if(DM(i, j) == 1)
+                    {
+                        invG(i, j) = qvec(i,m1);
+                        invG_i[i] += invG(i, j);
+                    }
+                }
+            }
+
+            for(i=0; i<d; ++i)
+            {
+                tem1 = tem1 + invG_i[i] * invpsi_i[i]; 
+                tem2 = tem2 + log(invG_i[i]) - log(-psi1inv_i[i]);
+                invG_i[i] = 0;
+            }
+
+            switch( parMode )
+            {
+                case 0: 
+                        den_m = exp( tem2 - tem1 );
+                        break;
+                case 1:
+                        denF = denFAC1(uvec, parFAC, Gfamily);
+                        den_m = exp( tem2 - tem1 ) * denF;
+                        break;
+                default:
+                        den_m = exp( tem2 - tem1 );
+                        break;
+            } 
+
+#ifdef DEBUG
+            Rcpp::Rcout << "m / denF / den_m: " << m1 << m2  << " / " << denF << " / " << den_m << " / " << tem1 << " / " << tem2 <<  " / " << wl[m1]*wl[m2]*den_m << std::endl;
+#endif
+            tem1 = 0;
+            tem2 = 0;
+
+            if(R_finite(den_m))
+            {
+              den += wl[m1]*den_m;
+            }
+
+        }
+    }        
+    else if(nf == 2)
 	{
 		for(m1=0;m1<nq;++m1)
 		{    
@@ -2049,6 +2305,79 @@ double den_LTE_LTA(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
     return den;
 }
 
+// pairwise Spearman's rho
+// [[Rcpp::export]]
+NumericVector srho_LTE_LTA(NumericMatrix DM, NumericVector par, int nq)
+{
+    // devec thevec are parameters for the Mittag-Leffler LT (LTE)
+    // devec1 are parameters for positive stable LT (LTA)
+    int i, i1, i2, m, mu, m1, m2;
+    int d = DM.nrow();
+    int err_msg;
+    
+    NumericVector out;
+    NumericMatrix qvec(d, nq);
+    
+    double tem1 = 0;
+    double tem2 = 0;
+    double intg = 0;
+    double srho = 0;
+
+    vector< vector<double> > par_i(d);
+    vector< vector<double> > par_1_i(d);
+    vector< vector<double> > par_2_i(d);
+    
+    for(i = 0; i < d; ++i)
+    {
+        par_i[i].push_back(par[i]);
+        par_i[i].push_back(par[i+d]);
+        par_i[i].push_back(par[i+2*d]);  
+
+        par_1_i[i].push_back(par[i]);
+        par_1_i[i].push_back(par[i+d]);
+        par_2_i[i].push_back(par[i+2*d]);  
+    }
+    
+    LTfunc_complex LT_complex;
+    LT_complex = &LTE_LTA_complex;
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+    
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            qvec(i,m) = qG(xl[m], LT_complex, par_i[i], err_msg);
+            Rcpp::Rcout<<"(i,m)= "<<i<<","<<m<<" par_i= "<< par_i[i][0] << " " << par_i[i][1] << " " << par_i[i][2] <<  " xl[m]= " << xl[m] <<  " qvec(i,m)= " << qvec(i,m) << " err= "<< err_msg << std::endl;
+        }
+    }
+    
+    for(i1 = 0; i1 < d-1; ++i1)
+    {
+        for(i2 = i1 + 1; i2 < d; ++i2)
+        {
+            for(mu=0;mu<nq;++mu)
+            {
+                for(m1=0;m1<nq;++m1)
+                {
+                    for(m2=0;m2<nq;++m2)
+                    {
+                        tem1 = LTE_LTA( - log(xl[m1]) / qvec(i1,mu), par_1_i[i1], par_2_i[i1]);
+                        tem2 = LTE_LTA( - log(xl[m2]) / qvec(i2,mu), par_1_i[i2], par_2_i[i2]);
+                        intg += wl[mu] * wl[m1] * wl[m2] * tem1 * tem2;
+                        //Rcpp::Rcout<< "mu,m1,m2,tem1,tem2,intg " << mu <<" "<<  m1 <<" "<<  m2 <<" "<<  tem1 <<" "<<  tem2  <<" "<<  intg << std::endl;
+                    }
+                }
+            }
+            srho = 12 * intg - 3;
+            intg = 0;
+            out.push_back(srho);
+        }
+    }
+    return out; 
+}
 
 // ad-hoc case for overlap LTB and LTB
 // [[Rcpp::export]]
