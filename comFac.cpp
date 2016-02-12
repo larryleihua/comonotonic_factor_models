@@ -1087,7 +1087,7 @@ double denB1(double u, double v, vector<double> par)
     tem2 = pow(x,2) +  pow(y,2);
     tem3 = exp( -0.5 / tem0 * ( tem2 - 2*r*x*y  ) );
     tem4 = exp( tem2 / 2 );
-    
+    // Rcpp::Rcout << "tem1 tem2 tem3 " << tem1 << " " << tem2 << " " << tem4 << std::endl;
     return tem1 * tem3 * tem4;
 }
 
@@ -2311,8 +2311,127 @@ NumericVector srho_LTE_LTA(NumericMatrix DM, NumericVector par, int nq)
 {
     // devec thevec are parameters for the Mittag-Leffler LT (LTE)
     // devec1 are parameters for positive stable LT (LTA)
-    int i, i1, i2, m, mu, m1, m2;
+    int i, j, i1, i2, m, m1, m2, mm, mn, mk1, mk2;
     int d = DM.nrow();
+    int p = DM.ncol();
+    int err_msg;
+    
+    NumericVector out;
+    NumericMatrix qvec1(d, nq);
+    NumericMatrix qvec2(d, nq);
+    
+    double tem1 = 0;
+    double tem2 = 0;
+    double intg = 0;
+    double srho = 0;
+    vector<int> group(d);
+
+    vector< vector<double> > par_1_i(d);
+    vector< vector<double> > par_2_i(d);
+    
+    // assigning index for non overlapping groups
+    for(i = 0; i<d; ++i)
+    {
+        for(j = 0; j<p-1; ++j)
+        {
+            if(DM(i,j)==1)
+            {
+                group[i] = j; 
+                // Rcpp::Rcout << group[i] << std::endl;
+                break;
+            }
+        }
+    }
+   
+    for(i = 0; i < d; ++i)
+    {
+        par_1_i[i].push_back(par[i]);
+        par_1_i[i].push_back(par[i+d]);
+        par_2_i[i].push_back(par[i+2*d]);  
+    }
+    
+    LTfunc_complex LT_complex_1, LT_complex_2;
+    LT_complex_1 = &LTE_complex;
+    LT_complex_2 = &LTA_complex;
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+    
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            qvec1(i,m) = qG(xl[m], LT_complex_1, par_1_i[i], err_msg);
+            qvec2(i,m) = qG(xl[m], LT_complex_2, par_2_i[i], err_msg);
+            // Rcpp::Rcout<<"(i,m)= "<<i<<","<<m<<" par_1_i= "<< par_1_i[i][0] << " " << par_1_i[i][1] << " " << par_2_i[i][0] <<  " xl[m]= " << xl[m] <<  " qvec1(i,m)= " << qvec1(i,m) << " qvec2(i,m)= " << qvec2(i,m) << " err= "<< err_msg << std::endl;
+        }
+    }
+    
+    for(i1 = 0; i1 < d-1; ++i1)
+    {
+        for(i2 = i1 + 1; i2 < d; ++i2)
+        {
+            if(group[i1] == group[i2])
+            {
+                for(mk1=0;mk1<nq;++mk1)
+                {
+                    for(mk2=0;mk2<nq;++mk2)
+                    {
+                        for(m1=0;m1<nq;++m1)
+                        {
+                            for(m2=0;m2<nq;++m2)
+                            {
+                                        tem1 = LTE_LTA( - log(1-xl[m1]) / (qvec1(i1,mk1)+qvec2(i1,mk2)), par_1_i[i1], par_2_i[i1]);
+                                        tem2 = LTE_LTA( - log(1-xl[m2]) / (qvec1(i2,mk1)+qvec2(i2,mk2)), par_1_i[i2], par_2_i[i2]);
+                                        intg += wl[m1] * wl[m2] * wl[mk1] * wl[mk2] * tem1 * tem2;
+                                        //Rcpp::Rcout<< "mu,m1,m2,tem1,tem2,intg " << mu <<" "<<  m1 <<" "<<  m2 <<" "<<  tem1 <<" "<<  tem2  <<" "<<  intg << std::endl;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for(mn=0;mn<nq;++mn)
+                {
+                    for(mm=0;mm<nq;++mm)
+                    {
+                        for(mk2=0;mk2<nq;++mk2)
+                        {
+                            for(m1=0;m1<nq;++m1)
+                            {
+                                for(m2=0;m2<nq;++m2)
+                                {
+                                    tem1 = LTE_LTA( - log(1-xl[m1]) / (qvec1(i1,mn)+qvec2(i1,mk2)), par_1_i[i1], par_2_i[i1]);
+                                    tem2 = LTE_LTA( - log(1-xl[m2]) / (qvec1(i2,mm)+qvec2(i2,mk2)), par_1_i[i2], par_2_i[i2]);
+                                    intg += wl[m1] * wl[m2] * wl[mn] * wl[mm] * wl[mk2] * tem1 * tem2;
+                                    //Rcpp::Rcout<< "mu,m1,m2,tem1,tem2,intg " << mu <<" "<<  m1 <<" "<<  m2 <<" "<<  tem1 <<" "<<  tem2  <<" "<<  intg << std::endl;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+            }
+            srho = 12 * intg - 3;
+            intg = 0;
+            out.push_back(srho);
+        }
+    }
+    return out; 
+}
+
+
+// pairwise Spearman's rho
+// [[Rcpp::export]]
+NumericVector srho_LTE_Gaussian(NumericMatrix DM, NumericVector par, int nq)
+{
+    // devec thevec are parameters for the Mittag-Leffler LT (LTE)
+    // devec1 are parameters for positive stable LT (LTA)
+    int i, j, i1, i2, m, m1, m2, mk1, mk2;
+    int d = DM.nrow();
+    int p = DM.ncol();
     int err_msg;
     
     NumericVector out;
@@ -2320,26 +2439,44 @@ NumericVector srho_LTE_LTA(NumericMatrix DM, NumericVector par, int nq)
     
     double tem1 = 0;
     double tem2 = 0;
+    double tem3 = 0;
     double intg = 0;
     double srho = 0;
+    double rho_ij = 0;
+    vector<int> group(d);
+    vector<double> par_g(3);
+    vector<double> rhovec(1);
 
     vector< vector<double> > par_i(d);
-    vector< vector<double> > par_1_i(d);
-    vector< vector<double> > par_2_i(d);
+    
+    // assigning index for non overlapping groups
+    for(i = 0; i<d; ++i)
+    {
+        for(j = 0; j<p; ++j)
+        {
+            if(DM(i,j)==1)
+            {
+                group[i] = j;
+                // Rcpp::Rcout << group[i] <<  " d=" << d <<  " p=" << p << std::endl;
+                break;
+            }
+        }
+    }
     
     for(i = 0; i < d; ++i)
     {
         par_i[i].push_back(par[i]);
         par_i[i].push_back(par[i+d]);
-        par_i[i].push_back(par[i+2*d]);  
-
-        par_1_i[i].push_back(par[i]);
-        par_1_i[i].push_back(par[i+d]);
-        par_2_i[i].push_back(par[i+2*d]);  
+    }
+    
+    par_g.clear();
+    for(i=0; i<3; ++i)
+    {
+        par_g.push_back(par[2*d + i]);
     }
     
     LTfunc_complex LT_complex;
-    LT_complex = &LTE_LTA_complex;
+    LT_complex = &LTE_complex;
     
     /// setup Gaussian quadrature
     vector<double> xl(nq), wl(nq);
@@ -2350,7 +2487,7 @@ NumericVector srho_LTE_LTA(NumericMatrix DM, NumericVector par, int nq)
         for(m=0; m < nq; ++m)
         {
             qvec(i,m) = qG(xl[m], LT_complex, par_i[i], err_msg);
-            Rcpp::Rcout<<"(i,m)= "<<i<<","<<m<<" par_i= "<< par_i[i][0] << " " << par_i[i][1] << " " << par_i[i][2] <<  " xl[m]= " << xl[m] <<  " qvec(i,m)= " << qvec(i,m) << " err= "<< err_msg << std::endl;
+            // Rcpp::Rcout<<"(i,m)= "<<i<<","<<m<<" par_i= "<< par_i[i][0] << " " << par_i[i][1] << " " << par_g[0] << " " << par_g[1] << " " << par_g[2] <<  " xl[m]= " << xl[m] <<  " qvec1(i,m)= " << qvec(i,m) << " err= "<< err_msg << std::endl;
         }
     }
     
@@ -2358,18 +2495,64 @@ NumericVector srho_LTE_LTA(NumericMatrix DM, NumericVector par, int nq)
     {
         for(i2 = i1 + 1; i2 < d; ++i2)
         {
-            for(mu=0;mu<nq;++mu)
+            if(group[i1] == group[i2])
             {
-                for(m1=0;m1<nq;++m1)
+                for(mk1=0;mk1<nq;++mk1)
                 {
-                    for(m2=0;m2<nq;++m2)
+                    for(m1=0;m1<nq;++m1)
                     {
-                        tem1 = LTE_LTA( - log(xl[m1]) / qvec(i1,mu), par_1_i[i1], par_2_i[i1]);
-                        tem2 = LTE_LTA( - log(xl[m2]) / qvec(i2,mu), par_1_i[i2], par_2_i[i2]);
-                        intg += wl[mu] * wl[m1] * wl[m2] * tem1 * tem2;
-                        //Rcpp::Rcout<< "mu,m1,m2,tem1,tem2,intg " << mu <<" "<<  m1 <<" "<<  m2 <<" "<<  tem1 <<" "<<  tem2  <<" "<<  intg << std::endl;
+                        for(m2=0;m2<nq;++m2)
+                        {
+                            tem1 = LTE( - log(1-xl[m1]) / (qvec(i1,mk1)), par_i[i1]);
+                            tem2 = LTE( - log(1-xl[m2]) / (qvec(i2,mk1)), par_i[i2]);
+                            intg += wl[m1] * wl[m2] * wl[mk1] * tem1 * tem2;
+                            //Rcpp::Rcout<< "mu,m1,m2,tem1,tem2,intg " << mu <<" "<<  m1 <<" "<<  m2 <<" "<<  tem1 <<" "<<  tem2  <<" "<<  intg << std::endl;
+                        }
                     }
                 }
+            }
+            else
+            {
+                for(mk1=0;mk1<nq;++mk1)
+                {
+                    for(mk2=0;mk2<nq;++mk2)
+                    {
+                        for(m1=0;m1<nq;++m1)
+                        {
+                            for(m2=0;m2<nq;++m2)
+                            {
+                                tem1 = LTE( - log(1-xl[m1]) / (qvec(i1,mk1)), par_i[i1]);
+                                tem2 = LTE( - log(1-xl[m2]) / (qvec(i2,mk2)), par_i[i2]);
+                                
+                                if( ((group[i1] == 0) && (group[i2] == 1))  || ((group[i1] == 1) && (group[i2] == 0))   )
+                                {
+                                    rho_ij = par_g[0];
+                                }
+                                else if( ((group[i1] == 0) && (group[i2] == 2)) || ((group[i1] == 2) && (group[i2] == 0)) )
+                                {
+                                    rho_ij = par_g[1];
+                                }
+                                else if( ((group[i1] == 1) && (group[i2] == 2)) || ((group[i1] == 2) && (group[i2] == 1)) )
+                                {
+                                    rho_ij = par_g[2];
+                                }
+                                else
+                                {
+                                    rho_ij = 0;
+                                }
+                                
+                                rhovec.clear();
+                                rhovec.push_back(rho_ij);
+                                
+                                tem3 = denB1(xl[mk1], xl[mk2], rhovec);
+                                
+                                intg += wl[m1] * wl[m2] * wl[mk1] * wl[mk2] * tem1 * tem2 * tem3;
+                                // Rcpp::Rcout<< "m1,m2,mk1,mk2,tem1,tem2,tem3 " << " " << i1 << " " << i2 << " " << group[i1] << " " << group[i2] << " " << m1 <<" "<<  m2 <<" "<<  mk1 <<" "<< mk2  <<" "<<  tem1 <<" "<<  tem2  <<" "<<  tem3 << std::endl;
+                                // Rcpp::Rcout << "par_g, rho_ij" << group[i1] << " " << group[i2] << " " << par_g[0] << " " << par_g[1] << " " <<  par_g[2] << " " << rho_ij << " " << par[2*d + 0] << " " << par[2*d + 1] << " " << par[2*d + 2] << std::endl;
+                            }
+                        }
+                    }
+                }                
             }
             srho = 12 * intg - 3;
             intg = 0;
