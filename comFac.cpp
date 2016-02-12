@@ -1161,7 +1161,7 @@ double denFAC(vector<double> uvec, NumericVector parFAC)
 double denFAC1(vector<double> uvec, NumericVector parFAC, int Gfamily)
 {
     int udim = uvec.size();
-    int i;
+    int i, j;
     double out;
     
     if(Gfamily == 6)
@@ -1190,7 +1190,8 @@ double denFAC1(vector<double> uvec, NumericVector parFAC, int Gfamily)
         NumericVector mean0(udim);
         NumericMatrix sigma0(udim, udim);
 
-        size_t i,j;   
+        // size_t i,j;   
+
 
         for(i = 0; i < udim; ++i)
         {
@@ -1202,7 +1203,8 @@ double denFAC1(vector<double> uvec, NumericVector parFAC, int Gfamily)
         arma::rowvec mean(mean0.begin(), mean0.size(), false);
         arma::mat sigma(sigma0.begin(), udim, udim, false);
 
-        size_t k = 0;
+        // size_t k = 0;
+	int k = 0;
         for(i = 0; i < udim; ++i)
         {
             sigma(i,i) = 1.0; // the diagonal of the correlation matrix
@@ -1215,7 +1217,7 @@ double denFAC1(vector<double> uvec, NumericVector parFAC, int Gfamily)
         }
 
         double dmvn = dmvnrm_arma(x, mean, sigma, logd);
-        double duniv_all = 1;
+        double duniv_all = 1.0;
         for(i =0; i < udim; ++i)
         {
             duniv_all *= duniv[i];
@@ -2644,8 +2646,7 @@ double den_LTB_LTB(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
         }
     }
     
-    int err_msg;
-    
+ 
     for(i = 0; i < 2; ++i)
     {
         invpsi_i[i] = invpsi(tvec[i], par_1_i[i], 4);
