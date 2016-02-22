@@ -15,6 +15,10 @@
 #include <gsl/gsl_sf_hyperg.h>
 #include <boost/math/special_functions/bessel.hpp> // for real arguments
 
+// to-do:
+// LTI_V2 needs to be redefined, the complex case is done.  
+
+
 #ifdef COMPLEX_BESSEL
 #include <complex_bessel.h> // for complex arguments, https://github.com/valandil/complex_bessel
 #endif
@@ -22,7 +26,8 @@
 
 #include "comFac.hpp"
 
-#define LTE_V2
+#define LTE_V2  // re-parametrize the LTE (Mittag-Leffter) LT (for BB1 in Joe 1997) 
+#define LTI_V2  // re-parametrize the LTI (Sibuya stopped gamma) LT (for BB7 in Joe 1997)
 
 #define qMAX 1e+100
 #define qMIN 1e-100
@@ -82,6 +87,7 @@ complex<double> LTB_complex(complex<double> s, vector<double> par)
 }
 
 // for BB7
+#ifdef LTI_V2
 complex<double> LTI_complex(complex<double> s, vector<double> par)
 {
     complex<double> tmp;
@@ -89,12 +95,25 @@ complex<double> LTI_complex(complex<double> s, vector<double> par)
     complex<double> out(1.0, 0);
     double de = par[0];
     double th = par[1];
-
+    tmp = pow( (1.0 + de*s), (-1.0/de) );
+    psii = 1.0 - pow(tmp, (1.0/th));
+    out *= psii;
+    return out;
+}
+#else
+complex<double> LTI_complex(complex<double> s, vector<double> par)
+{
+    complex<double> tmp;
+    complex<double> psii;
+    complex<double> out(1.0, 0);
+    double de = par[0];
+    double th = par[1];
     tmp = 1.0 - pow( (1.0 + s), (-1.0/de));
     psii = 1.0 - pow(tmp, (1.0/th));
     out *= psii;
     return out;
 }
+#endif
 
 // for BB1
 #ifdef LTE_V2
@@ -2430,12 +2449,139 @@ NumericVector srho_LTE_Gaussian(NumericMatrix DM, NumericVector par, int nq)
     return out; 
 }
 
+// ad-hoc case for overlap LTB and LTB for bi-factor models
+// [[Rcpp::export]]
+double den_LTB_LTB_bifact(NumericVector tvec, NumericMatrix DM, NumericVector par, int nq)
+{
+    int i, j, m, m1, m2, m3;
+    int f = DM.ncol();
+    int d = DM.nrow();
+	
+    NumericMatrix invG(d,f);
+   
+    NumericVector invG_i(d);
+    NumericVector invpsi_i(d);
+    NumericVector psi1inv_i(d);
+    double tem1 = 0;
+    double tem2 = 0;
+    double den_m =0;
+    double den = 0;  
+
+    vector< vector<double> > par_1_i(d); //
+    vector< vector<double> > par_2_i(d); // for the last column, the common factors
+    
+    for(i = 0; i < d; ++i)
+    {
+        par_1_i[i].push_back(par[i]);
+        par_2_i[i].push_back(par[i+d]);
+    }
+    
+    LTfunc_complex LT_1, LT_2;
+    LT_1 = &LTB_complex;
+    LT_2 = &LTB_complex;
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+
+#ifdef DEBUG
+    Rcpp::Rcout << "xl / wl: " << xl[0] << ", " << xl[1] << " // " << wl[0] << ", " << wl[1] << std::endl;
+#endif
+    
+    NumericMatrix qvec(d, nq);
+    NumericMatrix hvec(d, nq);
+    int err_msg_1, err_msg_2;
+	
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            qvec(i,m) = qG(xl[m], LT_1, par_1_i[i], err_msg_1);
+            hvec(i,m) = qG(xl[m], LT_2, par_2_i[i], err_msg_2);
+        }
+            
+#ifdef DEBUG
+            Rcpp::Rcout<<"(i,m)= "<<i<<","<<m<<" par_1= "<< par_1_i[i][0] <<" par_2= "<< par_2_i[i][0] <<","<<par_2_i[i][1] <<  " xl[m]= " << xl[m] <<  " qvec(i,m)= " << qvec(i,m) << " hvec(i,m) = " << hvec(i,m) << " err="<< err_msg_1 << "," << err_msg_2 << std::endl;
+#endif
+    }
+    
+    vector<double> par_1_2_vec;
+    for(i = 0; i < 6; ++i)
+    {
+        par_1_2_vec.push_back(par_1_i[i][0]);
+        par_1_2_vec.push_back(par_2_i[i][0]);
+        invpsi_i[i] = invpsi(tvec[i], par_1_2_vec, 4);
+        psi1inv_i[i] = LTB1_vector(invpsi_i[i], par_1_2_vec);
+        par_1_2_vec.clear();
+#ifdef DEBUG
+        Rcpp::Rcout << "err: " << err_msg << " invpsi_i[i] / psi1inv_i[i]: " << invpsi_i[i] << " / " << psi1inv_i[i] << " par "  << par_1_i[i][0] << "," << par_2_i[i][0] << "," << par_2_i[i][1]  << "," << std::endl;
+#endif
+    }
+    
+    for(m1=0;m1<nq;++m1)
+    {    
+        for(m2=0;m2<nq;++m2)
+        {	    
+            for(m3=0;m3<nq;++m3)
+            {    
+                for(j=0;j<f;++j)  // i: row,   j: col
+                {
+                    for(i=0;i<d;++i)
+                    {
+                        if(DM(i, j) == 1)
+                        {
+                            switch( j )
+                            {
+                                case 0:
+                                        invG(i, j) = qvec(i,m1);
+                                        break;
+                                case 1:
+                                        invG(i, j) = qvec(i,m2);
+                                        break;
+                                case 2:
+                                        invG(i, j) = hvec(i,m3);
+                                        break;
+                                default:
+                                        break;
+                            }
+                            invG_i[i] += invG(i, j);
+#ifdef DEBUG
+                                //Rcpp::Rcout << m1<<","<<m2<<","<<m3 <<","<< m4 <<","<< i << "," << j << " invG(i,j)= " << invG(i,j) << std::endl;
+#endif
+                        }
+                    }
+                }
+
+                for(i=0; i<d; ++i)
+                {
+                        tem1 = tem1 + invG_i[i] * invpsi_i[i]; 
+                        tem2 = tem2 + log(invG_i[i]) - log(-psi1inv_i[i]);
+                        invG_i[i] = 0;
+                }
+
+                den_m = exp( tem2 - tem1 );
+#ifdef DEBUG
+			Rcpp::Rcout << "m/den_m/tem1/tem2/: " << m1<<m2 << " / " << den_m << " / " << tem1 << " / " << tem2 <<  " / " << std::endl;
+#endif
+                tem1 = 0;
+                tem2 = 0;
+
+                if(R_finite(den_m))
+                {
+                  den += wl[m1]*wl[m2]*wl[m3]*den_m;
+                }
+            }
+        }
+
+    }
+    return den;
+}
+
+
 // ad-hoc case for overlap LTB and LTB
 // [[Rcpp::export]]
 double den_LTB_LTB(NumericVector tvec, NumericMatrix DM, NumericVector par, int nq)
 {
-    // devec are paramters for positive stable LT (LTA)
-    // devec1 and thevec1 are parameters for the Mittag-Leffler LT
     
     int i, j, m, m1, m2;
     int f = DM.ncol();
