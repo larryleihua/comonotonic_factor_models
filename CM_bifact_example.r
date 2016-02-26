@@ -44,7 +44,7 @@ nllk_LTA_LTA_s = function(par, parM, grp, dat, nq=31)
 }
 
 ############## data #############
-source("data.r")
+source("data_example.r")
 dat = UU
 grp = c(5,3,4)
 ######################## PS+PS ###############
