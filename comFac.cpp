@@ -419,15 +419,13 @@ double LTE_vector(double s, vector<double> par) // LT of independent sum is the 
 #endif
 
 
-
-
 //  note the difference between LTA and LTA_vector
-double LTA(double s, vector<double> par) 
+double LTA(double s, vector<double> par, double sigma = 1.0) 
 {
     double tmp;
     double out;
     double de = par[0];
-    tmp = pow(s, (1.0/de));
+    tmp = pow(s*sigma, (1.0/de));
     out = exp(-tmp);
     return out;
 }
@@ -463,12 +461,12 @@ double LTI(double s, vector<double> par)
 }
 
 #ifdef LTE_V2
-double LTE(double s, vector<double> par)
+double LTE(double s, vector<double> par, double sig = 1.0) // th > 0 de > 1
 {
     double tmp, out;
     double de = par[0];
     double th = par[1];
-    tmp = 1.0 + pow(s, (1.0/de))*th;
+    tmp = 1.0 + pow(s*sig, (1.0/de))*th;
     out = pow(tmp, (-1.0/th));
     return out;
 }
@@ -2244,12 +2242,12 @@ double den_LTA_LTA_s(NumericMatrix tvec, NumericVector grp, NumericVector par, i
         eta.push_back(par[d+i]);
     }
 
-    vector<double> scal(d);
-    vector<double> scal1(d);
+    vector<double> gsig(d);
+    vector<double> csig(d);
     for(i=0;i<d;++i)
     {
-        scal[i] = pow(1.0 - eta[i], par_LT[i][0]);
-        scal1[i] = pow(eta[i], par_LT[i][0]);
+        gsig[i] = pow(1.0 - eta[i], par_LT[i][0]);
+        csig[i] = pow(eta[i], par_LT[i][0]);
     }
     
     LTfunc_complex LT;
@@ -2294,8 +2292,8 @@ double den_LTA_LTA_s(NumericMatrix tvec, NumericVector grp, NumericVector par, i
                     tem2 = 0;
                     for(i = grp_start[j]; i < cumugrp[j]; ++i)
                     {
-                        tem1 *= ( (qvec(i,m) * scal[i] + qvec(i,m0) * scal1[i]) / (-psi1inv_i[i]) );
-                        tem2 -= (qvec(i,m) * scal[i] * invpsi_i[i]);
+                        tem1 *= ( (qvec(i,m) * gsig[i] + qvec(i,m0) * csig[i]) / (-psi1inv_i[i]) );
+                        tem2 -= (qvec(i,m) * gsig[i] * invpsi_i[i]);
                     }
                     den_j += ( tem1 * exp(tem2) * wl[m] ); 
                 }
@@ -2305,18 +2303,147 @@ double den_LTA_LTA_s(NumericMatrix tvec, NumericVector grp, NumericVector par, i
             tem0 = 0;
             for(i=0;i<d;++i)
             {
-                tem0 -= (qvec(i,m0) * scal1[i] * invpsi_i[i]);
+                tem0 -= (qvec(i,m0) * csig[i] * invpsi_i[i]);
             }
 
             den += ( exp(tem0) * den_grp * wl[m0] );  
         }
         lden += log(den);
-
-        // Rcpp::Rcout << iNN << " lden = " << lden << " log(den) = " << log(den) << std::endl;
     }    
-    
     return lden;
 }
+
+// [[Rcpp::export]]
+double den_LTE_LTE_s(NumericMatrix tvec, NumericVector grp, NumericVector par, int nq)
+{
+    // use different scale parameters so that the V_1 + V_c has a single parameter
+
+    int i, j, m, m0, iNN;
+    int gsize = grp.size();
+    int d = 0;
+    
+    int NN = tvec.nrow(); // sample size
+    
+    vector<int> cumugrp;
+    vector<int> igrp;
+    vector<int> grp_start;
+
+    for(i = 0; i<gsize; ++i)
+    {
+        igrp.push_back((int) grp[i]);
+        d+=grp[i];
+    }
+    
+    NumericVector invpsi_i(d);
+    NumericVector psi1inv_i(d);
+    double tem1 = 1.0;
+    double tem2 = 0;
+    double tem0 = 0;
+    double den = 0;
+    double den_grp = 1.0;
+    double de_tmp, th_tmp, u_tmp;
+
+    vector< vector<double> > par_LT(d);
+    vector<double> eta;
+        
+    std::partial_sum( igrp.begin(), igrp.end(), std::back_inserter(cumugrp));
+	
+    grp_start.push_back(0);
+    for(i=0; i<gsize-1; ++i)
+    {
+        grp_start.push_back(cumugrp[i]);
+    }
+    
+    for(i = 0; i < d; ++i)
+    {
+        par_LT[i].push_back(par[i]);
+        par_LT[i].push_back(par[d+i]);
+        eta.push_back(par[2*d+i]);
+    }
+
+    vector<double> gsig(d);
+    vector<double> csig(d);
+    vector<double> gth(d);
+    vector<double> cth(d);
+    
+    for(i=0;i<d;++i)
+    {
+        gsig[i] = pow(1.0 - eta[i], par_LT[i][0]);
+        csig[i] = pow(eta[i], par_LT[i][0]); 
+        gth[i] = par_LT[i][1] / (1 - eta[i]);
+        cth[i] = par_LT[i][1] / (eta[i]);
+    }
+    
+    LTfunc_complex LT;
+    LT = &LTE_complex;
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+
+    NumericMatrix qvec(d, nq);
+    int err_msg_1;
+	
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            qvec(i,m) = qG(xl[m], LT, par_LT[i], err_msg_1);
+        }
+    }
+    
+    double den_j = 0;
+    double lden = 0;
+    double tem, ss;
+
+    for(iNN=0;iNN<NN;++iNN)
+    {
+        for(i = 0; i < d; ++i)
+        {
+            de_tmp = par_LT[i][0];
+            th_tmp = par_LT[i][1];
+            u_tmp = tvec(iNN, i);
+            
+            invpsi_i[i] = pow(( pow(u_tmp, (-th_tmp))-1) / th_tmp, de_tmp); 
+            ss = invpsi_i[i];
+            tem = pow( (pow(ss, (1/de_tmp))*th_tmp + 1), (-1/th_tmp-1)); 
+            psi1inv_i[i] = tem*( pow(ss, (1/de_tmp-1)) / de_tmp );
+        }
+            
+        den = 0;                   
+        for(m0=0;m0<nq;++m0)
+        {
+            den_grp = 1.0;
+            for(j=0;j<gsize;++j)  // j is index for groups
+            {
+                den_j = 0;
+                for(m=0;m<nq;++m)
+                {
+                    tem1 = 1.0; 
+                    tem2 = 0;
+                    for(i = grp_start[j]; i < cumugrp[j]; ++i)
+                    {
+                        tem1 *= ( (qvec(i,m) * gsig[i] + qvec(i,m0) * csig[i]) / (-psi1inv_i[i]) );
+                        tem2 -= (qvec(i,m) * gsig[i] * invpsi_i[i]);
+                    }
+                    den_j += ( tem1 * exp(tem2) * wl[m] ); 
+                }
+                den_grp *= den_j;
+            }
+
+            tem0 = 0;
+            for(i=0;i<d;++i)
+            {
+                tem0 -= (qvec(i,m0) * csig[i] * invpsi_i[i]);
+            }
+
+            den += ( exp(tem0) * den_grp * wl[m0] );  
+        }
+        lden += log(den);
+    }    
+    return lden;
+}
+
 
 
 // pairwise Spearman's rho
