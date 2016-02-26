@@ -2199,13 +2199,16 @@ double den_LTE_LTA(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
 }
 
 // [[Rcpp::export]]
-double den_LTA_LTA_s(NumericVector tvec, NumericVector grp, NumericVector par, int nq)
+double den_LTA_LTA_s(NumericMatrix tvec, NumericVector grp, NumericVector par, int nq)
 {
     // use different scale parameters so that the V_1 + V_c has a single parameter
 
-    int i, j, m, m0;
+    int i, j, m, m0, iNN;
     int gsize = grp.size();
     int d = 0;
+    
+    int NN = tvec.nrow(); // sample size
+    
     vector<int> cumugrp;
     vector<int> igrp;
     vector<int> grp_start;
@@ -2215,7 +2218,7 @@ double den_LTA_LTA_s(NumericVector tvec, NumericVector grp, NumericVector par, i
         igrp.push_back((int) grp[i]);
         d+=grp[i];
     }
-
+    
     NumericVector invpsi_i(d);
     NumericVector psi1inv_i(d);
     double tem1 = 1.0;
@@ -2267,45 +2270,53 @@ double den_LTA_LTA_s(NumericVector tvec, NumericVector grp, NumericVector par, i
         }
     }
     
-    for(i = 0; i < d; ++i)
-    {
-        invpsi_i[i] = pow(- log(tvec[i]), par_LT[i][0]);
-        psi1inv_i[i] = LTA1(invpsi_i[i], par_LT[i]);
-    }
-    
-    double den_j;
+    double den_j = 0;
+    double lden = 0;
 
-    for(m0=0;m0<nq;++m0)
+    for(iNN=0;iNN<NN;++iNN)
     {
-        den_grp = 1.0;
-        for(j=0;j<gsize;++j)  // j is index for groups
+        for(i = 0; i < d; ++i)
         {
-            den_j = 0;
-            for(m=0;m<nq;++m)
+            invpsi_i[i] = pow(- log(tvec(iNN, i)), par_LT[i][0]);
+            psi1inv_i[i] = LTA1(invpsi_i[i], par_LT[i]);
+        }
+
+        den = 0;                   
+        for(m0=0;m0<nq;++m0)
+        {
+            den_grp = 1.0;
+            for(j=0;j<gsize;++j)  // j is index for groups
             {
-                tem1 = 1.0; 
-                tem2 = 0;
-                for(i = grp_start[j]; i < cumugrp[j]; ++i)
+                den_j = 0;
+                for(m=0;m<nq;++m)
                 {
-                    tem1 *= ( (qvec(i,m) * scal[i] + qvec(i,m0) * scal1[i]) / (-psi1inv_i[i]) );
-                    tem2 -= (qvec(i,m) * scal[i] * invpsi_i[i]);
+                    tem1 = 1.0; 
+                    tem2 = 0;
+                    for(i = grp_start[j]; i < cumugrp[j]; ++i)
+                    {
+                        tem1 *= ( (qvec(i,m) * scal[i] + qvec(i,m0) * scal1[i]) / (-psi1inv_i[i]) );
+                        tem2 -= (qvec(i,m) * scal[i] * invpsi_i[i]);
+                    }
+                    den_j += ( tem1 * exp(tem2) * wl[m] ); 
                 }
-                den_j += ( tem1 * exp(tem2) * wl[m] ); 
+                den_grp *= den_j;
             }
-            den_grp *= den_j;
-        }
-   
-        tem0 = 0;
-        for(i=0;i<d;++i)
-        {
-            tem0 -= (qvec(i,m0) * scal1[i] * invpsi_i[i]);
-        }
-        
-        den += ( exp(tem0) * den_grp * wl[m0] );  
-    }   
-    return den;
-}
 
+            tem0 = 0;
+            for(i=0;i<d;++i)
+            {
+                tem0 -= (qvec(i,m0) * scal1[i] * invpsi_i[i]);
+            }
+
+            den += ( exp(tem0) * den_grp * wl[m0] );  
+        }
+        lden += log(den);
+
+        // Rcpp::Rcout << iNN << " lden = " << lden << " log(den) = " << log(den) << std::endl;
+    }    
+    
+    return lden;
+}
 
 
 // pairwise Spearman's rho
