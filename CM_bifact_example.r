@@ -63,6 +63,6 @@ par0 = c(rep(-1, sum(grp)*2), rep(0.85, sum(grp)))
 fit = nlm(nllk_LTE_LTE_s, p=par0, parM=parM, grp=grp, dat=dat, nq=21, hessian = F, print.level = 2, iterlim = 10000)
 PAR = fit$estimate
 nllk = fit$minimum
-cat("bi-factor LTA/LTA, convergence: ", fit$code, "\n")
-cat("bi-factor LTA/LTA, estimates: ", PAR, "\n")
-cat("bi-factor LTA/LTA, nllk: ", nllk, "\n")
+cat("bi-factor LTE/LTE, convergence: ", fit$code, "\n")
+cat("bi-factor LTE/LTE, estimates: ", PAR, "\n")
+cat("bi-factor LTE/LTE, nllk: ", nllk, "\n")
