@@ -1997,6 +1997,327 @@ double denCF1(NumericVector tvec, NumericMatrix DM, NumericVector parCluster,
     // return exp( tem2 - tem1 );
 }
 
+
+// denCF2, use all data as input
+// [[Rcpp::export]]
+// nf: number of sets of comonotonic factors
+double denCF2(NumericMatrix tvec, NumericMatrix DM, NumericVector parCluster, 
+            NumericVector parFAC, int parMode, int LTfamily, int Gfamily, int nq, int nf) 
+{
+    int i, j, m, m1, m2, m3, iNN;
+    int d = DM.nrow();
+    vector< vector<double> > par_i(d); // parameter vector for each row
+    int NN = tvec.nrow(); // sample size of the data
+
+    if( LTfamily == 1 || LTfamily == 7)
+    {
+        for(i = 0; i < d; ++i)
+        {
+            // to-do: to support multiple non-zero entries in a single row
+            par_i[i].push_back(parCluster[i]); // de for i
+            par_i[i].push_back(parCluster[i+d]); // th for i
+        }
+    }
+    else if( LTfamily == 6 || LTfamily == 4)
+    {
+        for(i = 0; i < d; ++i)
+        {
+            par_i[i].push_back(parCluster[i]); // de for i
+        }
+    }
+    else if(LTfamily == 100)  // LTGIG
+    {
+        for(i = 0; i < d; ++i)
+        {
+            par_i[i].push_back(parCluster[i]); // th for i
+            par_i[i].push_back(parCluster[i+d]); // la for i
+            par_i[i].push_back(parCluster[i+2*d]); // xi for i
+        }
+    }
+    else
+    {
+        std::cout << "The LT family is not supported." << std::endl;
+    }
+
+    NumericMatrix invG(d,nf);
+    NumericVector invG_i(d);
+    NumericVector invpsi_i(d);
+    NumericVector psi1inv_i(d);
+    double tem1 = 0;
+    double tem2 = 0;
+    double den_m =0;
+    double den = 0;
+    double lden = 0;
+    double denF = 0;
+
+    LTfunc_complex LT;
+    LTfunc_vector LT1_vector;
+    switch( LTfamily )
+    {
+        case 1:
+            LT = &LTE_complex;
+            LT1_vector = &LTE1_vector;
+            break;
+        case 4:
+            LT = &LTB_complex;
+            LT1_vector = &LTB1_vector;
+            break;			
+        case 7:
+            LT = &LTI_complex;
+            LT1_vector = &LTI1_vector;
+            break;
+        case 6:
+            LT = &LTA_complex;
+            LT1_vector = &LTA1_vector;
+            break;
+#ifdef COMPLEX_BESSEL        
+        case 100:
+            LT = &LTGIG_complex;
+            LT1_vector = &LTGIG1_vector;
+            break;
+#endif            
+        default:
+            LT = &LTE_complex;
+            LT1_vector = &LTE1_vector;
+            break;
+    }
+    
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+    vector<double> uvec;
+
+    NumericMatrix qvec(d, nq);
+    int err_msg;
+
+    // calculate qvec for reuse, improving speed
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            qvec(i,m) = qG(xl[m], LT, par_i[i], err_msg);
+#ifdef DEBUG
+            Rcpp::Rcout << "(i,m): " <<i<<m << " qvec(i,m)=" << qvec(i,m) << " err= " << err_msg << std::endl;
+#endif            
+        }
+    }
+    
+    
+    // to-do: only support f=1,2,3 for now
+    
+    if(nf == 1)
+    {
+        for(m1=0;m1<nq;++m1)
+        {    
+            uvec.clear();
+            uvec.push_back(xl[m1]);
+
+            for(j=0;j<nf;++j)  // i: row,   j: col
+            {
+                for(i=0;i<d;++i)
+                {
+                    if(DM(i, j) == 1)
+                    {
+                        invG(i, j) = qvec(i,m1);
+                        invG_i[i] += invG(i, j);
+                    }
+                }
+            }
+
+            for(i=0; i<d; ++i)
+            {
+                tem1 = tem1 + invG_i[i] * invpsi_i[i]; 
+                tem2 = tem2 + log(invG_i[i]) - log(-psi1inv_i[i]);
+                invG_i[i] = 0;
+            }
+
+            switch( parMode )
+            {
+                case 0: 
+                        den_m = exp( tem2 - tem1 );
+                        break;
+                case 1:
+                        denF = denFAC1(uvec, parFAC, Gfamily);
+                        den_m = exp( tem2 - tem1 ) * denF;
+                        break;
+                default:
+                        den_m = exp( tem2 - tem1 );
+                        break;
+            } 
+
+#ifdef DEBUG
+            Rcpp::Rcout << "m / den_m: " << m1  << " / " << " / " << den_m << " / " << tem1 << " / " << tem2 <<  " / " << wl[m1]*den_m << std::endl;
+#endif
+            tem1 = 0;
+            tem2 = 0;
+			
+			// Rcpp::Rcout << "m1, den_m: " << m1 << " " << den_m << std::endl;
+
+            if(R_finite(den_m))
+            {
+              den += wl[m1]*den_m;
+            }
+
+        }
+    }        
+    else if(nf == 2)
+	{
+		for(m1=0;m1<nq;++m1)
+		{    
+			for(m2=0;m2<nq;++m2)
+			{	    
+					uvec.clear();
+					uvec.push_back(xl[m1]);
+					uvec.push_back(xl[m2]);
+					
+					for(j=0;j<nf;++j)  // i: row,   j: col
+					{
+						for(i=0;i<d;++i)
+						{
+							if(DM(i, j) == 1)
+							{
+								switch( j )
+								{
+									case 0:
+											invG(i, j) = qvec(i,m1);
+											break;
+									case 1:
+											invG(i, j) = qvec(i,m2);
+											break;
+									default:
+											break;
+								}
+								invG_i[i] += invG(i, j);
+							}
+						}
+					}
+
+					for(i=0; i<d; ++i)
+					{
+						tem1 = tem1 + invG_i[i] * invpsi_i[i]; 
+						tem2 = tem2 + log(invG_i[i]) - log(-psi1inv_i[i]);
+						invG_i[i] = 0;
+					}
+
+					switch( parMode )
+					{
+						case 0: 
+							den_m = exp( tem2 - tem1 );
+							break;
+						case 1:
+							denF = denFAC1(uvec, parFAC, Gfamily);
+							den_m = exp( tem2 - tem1 ) * denF;
+							break;
+						default:
+							den_m = exp( tem2 - tem1 );
+							break;
+					} 
+
+#ifdef DEBUG
+					Rcpp::Rcout << "m / denF / den_m: " << m1 << m2  << " / " << denF << " / " << den_m << " / " << tem1 << " / " << tem2 <<  " / " << wl[m1]*wl[m2]*den_m << std::endl;
+#endif
+					tem1 = 0;
+					tem2 = 0;
+
+					if(R_finite(den_m))
+					{
+					  den += wl[m1]*wl[m2]*den_m;
+					}
+
+			}
+		}
+	}
+	else if(nf == 3)
+	{
+            for(iNN=0;iNN<NN;++iNN)
+            {
+                for(i = 0; i < d; ++i)
+                {
+                    invpsi_i[i] = invpsi(tvec(iNN,i), par_i[i], LTfamily);
+                    psi1inv_i[i] = LT1_vector(invpsi_i[i], par_i[i]);
+#ifdef DEBUG
+        Rcpp::Rcout << "tvec[i]/invpsi_i[i]/psi1inv_i[i]: " << " / " << tvec[i] << " / " << invpsi_i[i] << " / " << psi1inv_i[i] << std::endl;
+#endif
+                }
+                
+                den = 0;
+                for(m1=0;m1<nq;++m1)
+		{    
+                    for(m2=0;m2<nq;++m2)
+                    {	    
+                        for(m3=0;m3<nq;++m3)
+                        {    
+                            uvec.clear();
+                            uvec.push_back(xl[m1]);
+                            uvec.push_back(xl[m2]);
+                            uvec.push_back(xl[m3]);
+
+                            for(j=0;j<nf;++j)  // i: row,   j: col
+                            {
+                                for(i=0;i<d;++i)
+                                {
+                                    if(DM(i, j) == 1)
+                                    {
+                                        switch( j )
+                                        {
+                                            case 0:
+                                                    invG(i, j) = qvec(i,m1);
+                                                    break;
+                                            case 1:
+                                                    invG(i, j) = qvec(i,m2);
+                                                    break;
+                                            case 2:
+                                                    invG(i, j) = qvec(i,m3);
+                                                    break;
+                                            default:
+                                                    break;
+                                        }
+                                        invG_i[i] += invG(i, j);
+                                        // Rcpp::Rcout << "(i,j): " << i << " / " << j << " / " << invG(i, j) << " / " << invG_i[i] << " / " << std::endl;
+                                    }
+                                }
+                            }
+
+                            for(i=0; i<d; ++i)
+                            {
+                                tem1 = tem1 + invG_i[i] * invpsi_i[i]; 
+                                tem2 = tem2 + log(invG_i[i]) - log(-psi1inv_i[i]);
+                                invG_i[i] = 0;
+                            }
+
+                            switch( parMode )
+                            {
+                                case 0: 
+                                        den_m = exp( tem2 - tem1 );
+                                        break;
+                                case 1:
+                                        denF = denFAC1(uvec, parFAC, Gfamily);
+                                        den_m = exp( tem2 - tem1 ) * denF;
+                                        break;
+                                default:
+                                        den_m = exp( tem2 - tem1 );
+                                        break;
+                            } 
+
+#ifdef DEBUG
+                            Rcpp::Rcout << "m / denF / den_m: " << m1 << m2 << m3 << " / " << denF << " / " << den_m << " / " << tem1 << " / " << tem2 <<  " / " << wl[m1]*wl[m2]*wl[m3]*den_m << std::endl;
+#endif
+                            tem1 = 0;
+                            tem2 = 0;
+
+                            if(R_finite(den_m))
+                            {
+                              den += wl[m1]*wl[m2]*wl[m3]*den_m;
+                            }
+                        }
+                    }
+		}
+                lden += log(den);		
+            }
+        }    
+    return lden;
+}
+
+
 /////////////////////////////////
 // comonotonic bi-factor model //
 /////////////////////////////////
