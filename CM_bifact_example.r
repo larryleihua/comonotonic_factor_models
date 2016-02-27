@@ -60,9 +60,104 @@ cat("bi-factor LTA/LTA, nllk: ", nllk, "\n", file = filep, append = T)
 ######################## ML+ML ###############
 parM = rep(1, sum(grp)*2)
 par0 = c(rep(-1, sum(grp)*2), rep(0.85, sum(grp)))
-fit = nlm(nllk_LTE_LTE_s, p=par0, parM=parM, grp=grp, dat=dat, nq=21, hessian = F, print.level = 2, iterlim = 10000)
+fit2 = nlm(nllk_LTE_LTE_s, p=par0, parM=parM, grp=grp, dat=dat, nq=21, hessian = F, print.level = 2, iterlim = 10000)
 PAR = fit$estimate
 nllk = fit$minimum
 cat("bi-factor LTE/LTE, convergence: ", fit$code, "\n")
 cat("bi-factor LTE/LTE, estimates: ", PAR, "\n")
 cat("bi-factor LTE/LTE, nllk: ", nllk, "\n")
+
+### checking model-based Spearman's rho
+DM = t( matrix(c(
+    1,0,0,1,
+    1,0,0,1,
+    1,0,0,1,
+    1,0,0,1,
+    1,0,0,1,
+    0,1,0,1,
+    0,1,0,1,
+    0,1,0,1,
+    0,0,1,1,
+    0,0,1,1,
+    0,0,1,1,
+    0,0,1,1)
+    ,4,12))
+  
+  ############
+  ## PS+PS ###
+  ############
+  par = fit$estimate
+  nd = dim(DM)[1]
+  parvec = NULL
+  
+  parvec[1:nd] = exp(par[1:nd])+1
+  parvec[(nd+1):(2*nd)] = 1 / (1 + exp( -par[(nd+1):(2*nd)]))
+  rhovec = srho_LTA_LTA_s(DM, parvec, nq=21)
+  source("data.r")
+  emprirho = rep(NA, 12*11/2)
+  
+  k = 1
+  for(i in 1:11)
+  {
+    for(j in (i+1):12)
+    {
+      emprirho[k] = cor(x = UU[,i], y = UU[,j], method = "spearman")
+      k=k+1
+    }
+  }
+  
+  nam = NULL
+  for(i in 1:11)
+  {
+    for(j in (i+1):12)
+    {
+      nam = c(nam, paste(format(i), format(j),sep="."))
+    }
+  }
+  
+  names(rhovec) = names(emprirho) = nam
+  pdf("CM-bifact2-PSPS.pdf", width = 15, height = 15)
+  plot(emprirho, rhovec, xlim=c(0,1), ylim=c(0,1), main = "CM-bifact2-PSPS")
+  text(emprirho, rhovec, nam, cex=0.6, pos=4, col="red")
+  abline(c(0,0), c(1,1))
+  dev.off()
+  
+  ############
+  ## ML+ML ###
+  ############
+  par = fit2$estimate
+  nd = dim(DM)[1]
+  parvec = NULL
+  
+  parvec[1:nd] = exp(par[1:nd])+1
+  parvec[(nd+1):(2*nd)] = exp(par[(nd+1):(2*nd)])
+  parvec[(2*nd+1):(3*nd)] = 1 / (1 + exp( -par[(2*nd+1):(3*nd)]))
+  rhovec = srho_LTE_LTE_s(DM, parvec, nq=21)
+  source("data.r")
+  emprirho = rep(NA, 12*11/2)
+  
+  k = 1
+  for(i in 1:11)
+  {
+    for(j in (i+1):12)
+    {
+      emprirho[k] = cor(x = UU[,i], y = UU[,j], method = "spearman")
+      k=k+1
+    }
+  }
+  
+  nam = NULL
+  for(i in 1:11)
+  {
+    for(j in (i+1):12)
+    {
+      nam = c(nam, paste(format(i), format(j),sep="."))
+    }
+  }
+  
+names(rhovec) = names(emprirho) = nam
+pdf("CM-bifact2-MLML.pdf", width = 15, height = 15)
+plot(emprirho, rhovec, xlim=c(0,1), ylim=c(0,1), main = "CM-bifact2-MLML")
+text(emprirho, rhovec, nam, cex=0.6, pos=4, col="red")
+abline(c(0,0), c(1,1))
+dev.off()
