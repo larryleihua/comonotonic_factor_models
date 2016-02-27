@@ -966,6 +966,24 @@ double LTA1_LTE1(double s, vector<double> par_1, vector<double> par_2)
 }	
 #endif
 
+#ifdef LTE_V2
+double LTE1_LTA1(double s, vector<double> par_1, vector<double> par_2)
+{
+    double de1 = par_1[0];
+    double th1 = par_1[1];
+    double de = par_2[0];
+
+    double psi1_LTE = (-1.0 / de1) * pow(1.0 + pow(s, 1.0/de1)*th1, -1.0/th1 - 1.0) * pow(s, 1.0/de1 - 1.0);
+    double psi_LTE = LTE(s, par_1);
+
+    double psi1_LTA = exp(-pow(s,1.0/de)) * (pow(s, 1.0/de -1.0 )) / (- de); 
+    double psi_LTA = LTA(s, par_2);
+    double out = psi1_LTA*psi_LTE + psi1_LTE*psi_LTA;
+    return out;
+}
+#else
+#endif
+
 // invpsi can handle sum of independent nonnegative random variables if the same family
 double invpsi(double u, vector<double> par, int LTfamily)
 {
@@ -1091,6 +1109,66 @@ double invpsi_LTA_LTE(double u, vector<double> par_1, vector<double> par_2, int&
 
         LT1 = LTA1_LTE1(t, par_1, par_2);
         LT = LTA_LTE(t, par_1, par_2);
+
+        if ( LT > u )
+        {
+            lower = t;
+        }
+        else
+        {
+            upper = t;
+        }
+    }
+    
+    if(kount < maxiter && std::abs(u - LT) < tol )
+    {
+        err_msg = 1;
+    }
+    else if(kount >= maxiter)
+    {
+        err_msg = 2;
+    }
+    
+    return t;
+}
+
+double invpsi_LTE_LTA(double u, vector<double> par_1, vector<double> par_2, int& err_msg)
+{
+    const double tol = TOL;
+    const double x0 = 1.0;
+    const double xinc = 2.0;
+     
+    double LT = 1.0;
+    double LT1 = 0;
+    double lower, upper;
+    double t;
+    
+    int maxiter = MAXIT;
+    int kount = 0;
+    t = x0 / xinc;
+
+    /*--------------------------------
+    # Now use modified Newton-Raphson
+    #--------------------------------*/
+
+    lower = 0;
+    upper = qMAX;
+    LT = std::min(u+2*tol, pMAX);
+    t = LT;
+    LT1 = -1.0;
+    
+    while ( kount < maxiter && std::abs(u - LT) > tol )
+    {
+        kount += 1;
+        t = t - (LT-u) / LT1; 
+        
+        if (t < lower || t > upper)
+        {
+            t = 0.5 * (lower + upper);
+        }
+
+        LT1 = LTE1_LTA1(t, par_1, par_2);
+        LT = LTE_LTA(t, par_1, par_2);
 
         if ( LT > u )
         {
@@ -2060,7 +2138,6 @@ double den_LTA_LTE(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
 }
 
 
-// [[Rcpp::export]]
 double den_LTE_LTA(NumericVector tvec, NumericMatrix DM, NumericVector par, int nq)
 {
     // devec thevec are parameters for the Mittag-Leffler LT (LTE)
@@ -2196,6 +2273,8 @@ double den_LTE_LTA(NumericVector tvec, NumericMatrix DM, NumericVector par, int 
     return den;
 }
 
+// use different (s)cales so that the convolution has closed-form
+// return positive loglike
 // [[Rcpp::export]]
 double den_LTA_LTA_s(NumericMatrix tvec, NumericVector grp, NumericVector par, int nq)
 {
@@ -2313,6 +2392,8 @@ double den_LTA_LTA_s(NumericMatrix tvec, NumericVector grp, NumericVector par, i
     return lden;
 }
 
+// use different (s)cales so that the convolution has closed-form
+// return positive loglike
 // [[Rcpp::export]]
 double den_LTE_LTE_s(NumericMatrix tvec, NumericVector grp, NumericVector par, int nq)
 {
@@ -2443,6 +2524,120 @@ double den_LTE_LTE_s(NumericMatrix tvec, NumericVector grp, NumericVector par, i
             for(i=0;i<d;++i)
             {
                 tem0 -= (cqvec(i,m0) * csig[i] * invpsi_i[i]);
+            }
+
+            den += ( exp(tem0) * den_grp * wl[m0] );  
+        }
+        lden += log(den);
+    }    
+    return lden;
+}
+
+// use (o)riginal parameterization for LTs
+// return positive loglike
+// [[Rcpp::export]]
+double den_LTE_LTA_o(NumericMatrix tvec, NumericVector grp, NumericVector par, int nq)
+{
+    int i, j, m, m0, iNN;
+    int gsize = grp.size();
+    int d = 0;
+    int NN = tvec.nrow(); // sample size
+    
+    vector<int> cumugrp;
+    vector<int> igrp;
+    vector<int> grp_start;
+
+    for(i = 0; i<gsize; ++i)
+    {
+        igrp.push_back((int) grp[i]);
+        d+=grp[i];
+    }
+    
+    NumericVector invpsi_i(d);
+    NumericVector psi1inv_i(d);
+    double tem1 = 1.0;
+    double tem2 = 0;
+    double tem0 = 0;
+    double den = 0;
+    double den_grp = 1.0;
+    double u_tmp;
+
+    vector< vector<double> > gpar_LT(d);
+    vector< vector<double> > cpar_LT(d);
+        
+    std::partial_sum( igrp.begin(), igrp.end(), std::back_inserter(cumugrp));
+	
+    grp_start.push_back(0);
+    for(i=0; i<gsize-1; ++i)
+    {
+        grp_start.push_back(cumugrp[i]);
+    }
+    
+    for(i = 0; i < d; ++i)
+    {
+        gpar_LT[i].push_back(par[i]);
+        gpar_LT[i].push_back(par[d+i]);
+        cpar_LT[i].push_back(par[2*d+i]);
+    }
+
+    LTfunc_complex gLT, cLT;
+    gLT = &LTE_complex;
+    cLT = &LTA_complex;
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+
+    NumericMatrix gqvec(d, nq);
+    NumericMatrix cqvec(d, nq);
+    int err_msg_1;
+	
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            gqvec(i,m) = qG(xl[m], gLT, gpar_LT[i], err_msg_1);
+            cqvec(i,m) = qG(xl[m], cLT, cpar_LT[i], err_msg_1);
+        }
+    }
+    
+    double den_j = 0;
+    double lden = 0;
+
+    for(iNN=0;iNN<NN;++iNN)
+    {
+        for(i = 0; i < d; ++i)
+        {
+            u_tmp = tvec(iNN, i);
+            invpsi_i[i] = invpsi_LTE_LTA(u_tmp, gpar_LT[i], cpar_LT[i], err_msg_1);
+            psi1inv_i[i] = LTE1_LTA1(invpsi_i[i], gpar_LT[i], cpar_LT[i]);
+        }
+            
+        den = 0;                   
+        for(m0=0;m0<nq;++m0)
+        {
+            den_grp = 1.0;
+            for(j=0;j<gsize;++j)  // j is index for groups
+            {
+                den_j = 0;
+                for(m=0;m<nq;++m)
+                {
+                    tem1 = 1.0; 
+                    tem2 = 0;
+                    for(i = grp_start[j]; i < cumugrp[j]; ++i)
+                    {
+                        tem1 *= ( (gqvec(i,m) + cqvec(i,m0)) / (-psi1inv_i[i]) );
+                        tem2 -= (gqvec(i,m) * invpsi_i[i]);
+                    }
+                    den_j += ( tem1 * exp(tem2) * wl[m] ); 
+                }
+                den_grp *= den_j;
+            }
+
+            tem0 = 0;
+            for(i=0;i<d;++i)
+            {
+                tem0 -= (cqvec(i,m0) * invpsi_i[i]);
             }
 
             den += ( exp(tem0) * den_grp * wl[m0] );  
