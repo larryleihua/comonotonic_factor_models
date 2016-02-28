@@ -669,7 +669,6 @@ double qG(double u, LTfunc_complex LT, vector<double> par, int& err_msg)
     }
 }
 
-// [[Rcpp::export]]
 NumericVector qG_LTE(double u, double de, double th)
 {
 	int err_msg;
@@ -1682,7 +1681,6 @@ double denCF(NumericVector tvec, NumericMatrix DM, NumericVector parCluster,
 */
 
 // denCF1 using factor Gumbel copula for dependence among groups
-// [[Rcpp::export]]
 // nf: number of sets of comonotonic factors
 double denCF1(NumericVector tvec, NumericMatrix DM, NumericVector parCluster, 
             NumericVector parFAC, int parMode, int LTfamily, int Gfamily, int nq, int nf) 
@@ -2322,7 +2320,6 @@ double denCF2(NumericMatrix tvec, NumericMatrix DM, NumericVector parCluster,
 // comonotonic bi-factor model //
 /////////////////////////////////
 
-// [[Rcpp::export]]
 double den_LTA_LTE(NumericVector tvec, NumericMatrix DM, NumericVector par, int nq)
 {
     // devec are paramters for positive stable LT (LTA)
@@ -3480,7 +3477,6 @@ NumericVector srho_LTE_Gaussian(NumericMatrix DM, NumericVector par, int nq)
 }
 
 // ad-hoc case for overlap LTB and LTB for bi-factor models
-// [[Rcpp::export]]
 double den_LTB_LTB_bifact(NumericVector tvec, NumericMatrix DM, NumericVector par, int nq)
 {
     int i, j, m, m1, m2, m3;
@@ -3609,7 +3605,6 @@ double den_LTB_LTB_bifact(NumericVector tvec, NumericMatrix DM, NumericVector pa
 
 
 // ad-hoc case for overlap LTB and LTB
-// [[Rcpp::export]]
 double den_LTB_LTB(NumericVector tvec, NumericMatrix DM, NumericVector par, int nq)
 {
     
