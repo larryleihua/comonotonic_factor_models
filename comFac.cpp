@@ -2007,6 +2007,8 @@ double denCF2(NumericMatrix tvec, NumericMatrix DM, NumericVector parCluster,
     vector< vector<double> > par_i(d); // parameter vector for each row
     int NN = tvec.nrow(); // sample size of the data
 
+    vector<vector<vector<double> > > denAmongGroup;
+    
     if( LTfamily == 1 || LTfamily == 7)
     {
         for(i = 0; i < d; ++i)
@@ -2226,6 +2228,37 @@ double denCF2(NumericMatrix tvec, NumericMatrix DM, NumericVector parCluster,
 	}
 	else if(nf == 3)
 	{
+            
+            // among-group dependence
+            if(parMode == 1)
+            {
+
+                denAmongGroup.resize(nq);
+                for(i = 0;i<nq;++i)
+                {
+                    denAmongGroup[i].resize(nq);
+                    for(j=0;j<nq;++j)
+                    {
+                        denAmongGroup[i][j].resize(nq);
+                    }
+                }
+                
+                for(m1=0;m1<nq;++m1)
+		{
+                    for(m2=0;m2<nq;++m2)
+                    {
+                        for(m3=0;m3<nq;++m3)
+                        {
+                            uvec.clear();
+                            uvec.push_back(xl[m1]);
+                            uvec.push_back(xl[m2]);
+                            uvec.push_back(xl[m3]);
+                            denAmongGroup[m1][m2][m3] = denFAC1(uvec, parFAC, Gfamily);
+                        }
+                    }
+                }
+            }
+
             for(iNN=0;iNN<NN;++iNN)
             {
                 for(i = 0; i < d; ++i)
@@ -2244,11 +2277,6 @@ double denCF2(NumericMatrix tvec, NumericMatrix DM, NumericVector parCluster,
                     {	    
                         for(m3=0;m3<nq;++m3)
                         {    
-                            uvec.clear();
-                            uvec.push_back(xl[m1]);
-                            uvec.push_back(xl[m2]);
-                            uvec.push_back(xl[m3]);
-
                             for(j=0;j<nf;++j)  // i: row,   j: col
                             {
                                 for(i=0;i<d;++i)
@@ -2288,7 +2316,7 @@ double denCF2(NumericMatrix tvec, NumericMatrix DM, NumericVector parCluster,
                                         den_m = exp( tem2 - tem1 );
                                         break;
                                 case 1:
-                                        denF = denFAC1(uvec, parFAC, Gfamily);
+                                        denF = denAmongGroup[m1][m2][m3];
                                         den_m = exp( tem2 - tem1 ) * denF;
                                         break;
                                 default:
