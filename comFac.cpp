@@ -1510,177 +1510,6 @@ void gauleg(int nq, vector<double>& xq, vector<double>& wq)
 //       comonotonic factor copula densities         //
 ///////////////////////////////////////////////////////
 
-// density for using the same kind of LT for all
-// using Gaussian quadratures for numerical integration 
-// nq: number of quadratures
-
-/*
-double denCF(NumericVector tvec, NumericMatrix DM, NumericVector parCluster, 
-            NumericVector parFAC, int parMode, int LTfamily, int nq)
-{
-    int i, j, m, m1, m2, m3;
-    int f = DM.ncol();           // to-do: f = 3 is currently supported
-    int d = DM.nrow();
-    vector< vector<double> > par_i(d); // parameter vector for each row
-
-    if( LTfamily == 1 || LTfamily == 7)
-    {
-        for(i = 0; i < d; ++i)
-        {
-            // to-do: to support multiple non-zero entries in a single row
-            par_i[i].push_back(parCluster[i]); // de for i
-            par_i[i].push_back(parCluster[i+d]); // th for i
-        }
-    }
-    else if( LTfamily == 6 || LTfamily == 4)
-    {
-        for(i = 0; i < d; ++i)
-        {
-            par_i[i].push_back(parCluster[i]); // de for i
-        }
-    }
-    else
-    {
-        std::cout << "The LT family is not supported." << std::endl;
-    }
-
-    NumericMatrix invG(d,f);
-    NumericVector invG_i(d);
-    NumericVector invpsi_i(d);
-    NumericVector psi1inv_i(d);
-    double tem1 = 0;
-    double tem2 = 0;
-    double out =0;
-    double den_m =0;
-    double den = 0;
-
-    LTfunc_complex LT;
-    LTfunc_vector LT1_vector;
-    switch( LTfamily )
-    {
-        case 1:
-            LT = &LTE_complex;
-            LT1_vector = &LTE1_vector;
-            break;
-        case 7:
-            LT = &LTI_complex;
-            LT1_vector = &LTI1_vector;
-            break;
-        case 6:
-            LT = &LTA_complex;
-            LT1_vector = &LTA1_vector;
-            break;
-        default:
-            LT = &LTE_complex;
-            LT1_vector = &LTE1_vector;
-            break;
-    }
-    
-    vector<double> xl(nq), wl(nq);
-    gauleg(nq, xl, wl);
-    vector<double> uvec;
-
-    NumericMatrix qvec(d, nq);
-    int err_msg;
-
-    // calculate qvec for reuse, improving speed
-    for(i=0; i < d; ++i)
-    {
-        for(m=0; m < nq; ++m)
-        {
-            qvec(i,m) = qG(xl[m], LT, par_i[i], err_msg);
-#ifdef DEBUG
-            Rcpp::Rcout << "(i,m): " <<i<<m << " qvec(i,m)=" << qvec(i,m) << " err= " << err_msg << std::endl;
-#endif            
-        }
-    }
-    
-    for(i = 0; i < d; ++i)
-    {
-        invpsi_i[i] = invpsi(tvec[i], par_i[i], LTfamily);
-        psi1inv_i[i] = LT1_vector(invpsi_i[i], par_i[i]);
-        //Rcpp::Rcout << "invpsi_i[i] / psi1inv_i[i]: " << invpsi_i[i] << " / " << psi1inv_i[i] << std::endl;
-    }
-    
-    // to-do: only support f=3 for now
-    for(m1=0;m1<nq;++m1)
-    {    
-        for(m2=0;m2<nq;++m2)
-        {	    
-            for(m3=0;m3<nq;++m3)
-            {    
-                uvec.clear();
-                uvec.push_back(xl[m1]);
-                uvec.push_back(xl[m2]);
-                uvec.push_back(xl[m3]);
-                
-                for(j=0;j<f;++j)  // i: row,   j: col
-                {
-                    for(i=0;i<d;++i)
-                    {
-                        if(DM(i, j) == 1)
-                        {
-                            switch( j )
-                            {
-                                case 0:
-                                        invG(i, j) = qvec(i,m1);
-                                        break;
-                                case 1:
-                                        invG(i, j) = qvec(i,m2);
-                                        break;
-                                case 2:
-                                        invG(i, j) = qvec(i,m3);
-                                        break;
-                                default:
-                                        break;
-                            }
-                            invG_i[i] += invG(i, j);
-                            // Rcpp::Rcout << "(i,j): " << i << " / " << j << " / " << invG(i, j) << " / " << invG_i[i] << " / " << std::endl;
-                        }
-                    }
-                }
-
-                for(i=0; i<d; ++i)
-                {
-                    tem1 = tem1 + invG_i[i] * invpsi_i[i]; 
-                    tem2 = tem2 + log(invG_i[i]) - log(-psi1inv_i[i]);
-                    invG_i[i] = 0;
-                }
-
-                switch( parMode )
-                {
-                    case 0: 
-                        out = exp( tem2 - tem1 );
-                        break;
-                    case 1:
-                        out = exp( tem2 - tem1 ) * denFAC(uvec, parFAC);
-                        break;
-                    default:
-                        out = exp( tem2 - tem1 );
-                        break;
-                } 
-
-
-                // Rcpp::Rcout << "m / den_m: " << m << " / " << den_m << " / " << tem1 << " / " << tem2 <<  " / " << x1[m] << " / " << w1[m]*w2[m]*w3[m]*w4[m]*den_m << std::endl;
-
-                tem1 = 0;
-                tem2 = 0;
-
-                if(R_finite(den_m))
-                {
-                  den += wl[m1]*wl[m2]*wl[m3]*den_m;
-                }
-
-            }
-
-        }
-
-    }
-    return den;
-}
-*/
-
-// denCF1 using factor Gumbel copula for dependence among groups
 // nf: number of sets of comonotonic factors
 double denCF1(NumericVector tvec, NumericMatrix DM, NumericVector parCluster, 
             NumericVector parFAC, int parMode, int LTfamily, int Gfamily, int nq, int nf) 
@@ -2990,6 +2819,249 @@ double den_LTE_LTA_o(NumericMatrix tvec, NumericVector grp, NumericVector par, i
         }
         lden += log(den);
     }    
+    return lden;
+}
+
+// [[Rcpp::export]]
+double den_LTA_LTE_o(NumericMatrix tvec, NumericVector grp, NumericVector par, int nq)
+{
+    int i, j, m, m0, iNN;
+    int gsize = grp.size();
+    int d = 0;
+    int NN = tvec.nrow(); // sample size
+    
+    vector<int> cumugrp;
+    vector<int> igrp;
+    vector<int> grp_start;
+
+    for(i = 0; i<gsize; ++i)
+    {
+        igrp.push_back((int) grp[i]);
+        d+=grp[i];
+    }
+    
+    NumericVector invpsi_i(d);
+    NumericVector psi1inv_i(d);
+    double tem1 = 1.0;
+    double tem2 = 0;
+    double tem0 = 0;
+    double den = 0;
+    double den_grp = 1.0;
+    double u_tmp;
+
+    vector< vector<double> > gpar_LT(d);
+    vector< vector<double> > cpar_LT(d);
+        
+    std::partial_sum( igrp.begin(), igrp.end(), std::back_inserter(cumugrp));
+	
+    grp_start.push_back(0);
+    for(i=0; i<gsize-1; ++i)
+    {
+        grp_start.push_back(cumugrp[i]);
+    }
+    
+    for(i = 0; i < d; ++i)
+    {
+        gpar_LT[i].push_back(par[i]);
+        cpar_LT[i].push_back(par[d+i]);
+        cpar_LT[i].push_back(par[2*d+i]);
+    }
+
+    LTfunc_complex gLT, cLT;
+    gLT = &LTA_complex;
+    cLT = &LTE_complex;
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+
+    NumericMatrix gqvec(d, nq);
+    NumericMatrix cqvec(d, nq);
+    int err_msg_1;
+	
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            gqvec(i,m) = qG(xl[m], gLT, gpar_LT[i], err_msg_1);
+            cqvec(i,m) = qG(xl[m], cLT, cpar_LT[i], err_msg_1);
+        }
+    }
+    
+    double den_j = 0;
+    double lden = 0;
+
+    for(iNN=0;iNN<NN;++iNN)
+    {
+        for(i = 0; i < d; ++i)
+        {
+            u_tmp = tvec(iNN, i);
+            invpsi_i[i] = invpsi_LTA_LTE(u_tmp, gpar_LT[i], cpar_LT[i], err_msg_1);
+            psi1inv_i[i] = LTA1_LTE1(invpsi_i[i], gpar_LT[i], cpar_LT[i]);
+        }
+            
+        den = 0;                   
+        for(m0=0;m0<nq;++m0)
+        {
+            den_grp = 1.0;
+            for(j=0;j<gsize;++j)  // j is index for groups
+            {
+                den_j = 0;
+                for(m=0;m<nq;++m)
+                {
+                    tem1 = 1.0; 
+                    tem2 = 0;
+                    for(i = grp_start[j]; i < cumugrp[j]; ++i)
+                    {
+                        tem1 *= ( (gqvec(i,m) + cqvec(i,m0)) / (-psi1inv_i[i]) );
+                        tem2 -= (gqvec(i,m) * invpsi_i[i]);
+                    }
+                    den_j += ( tem1 * exp(tem2) * wl[m] ); 
+                }
+                den_grp *= den_j;
+            }
+
+            tem0 = 0;
+            for(i=0;i<d;++i)
+            {
+                tem0 -= (cqvec(i,m0) * invpsi_i[i]);
+            }
+
+            den += ( exp(tem0) * den_grp * wl[m0] );  
+        }
+        lden += log(den);
+    }    
+    return lden;
+}
+
+
+// Type III CM models; product decomposition - for V ~ Gamma(theta, 1)
+// [[Rcpp::export]]
+double den_LTB_p(NumericMatrix tvec, NumericVector grp, NumericVector par, int nq)
+{
+    int i, j, m, m0, iNN;
+    int gsize = grp.size();
+    int d = 0;
+    
+    int NN = tvec.nrow(); // sample size
+    
+    vector<int> cumugrp;
+    vector<int> igrp;
+    vector<int> grp_start;
+
+    for(i = 0; i<gsize; ++i)
+    {
+        igrp.push_back((int) grp[i]);
+        d+=grp[i];
+    }
+    
+    NumericVector invpsi_i(d);
+    NumericVector psi1inv_i(d);
+    double tem1 = 1.0;
+    double tem2 = 0;
+    double den = 0;
+    double den_grp = 1.0;
+    double th_tmp, u_tmp;
+
+    vector< vector<double> > par_LT(d);
+    vector<double> eta;
+        
+    std::partial_sum( igrp.begin(), igrp.end(), std::back_inserter(cumugrp));
+	
+    grp_start.push_back(0);
+    for(i=0; i<gsize-1; ++i)
+    {
+        grp_start.push_back(cumugrp[i]);
+    }
+    
+    for(i = 0; i < d; ++i)
+    {
+        par_LT[i].push_back(par[i]);  // theta, so that V ~ Gamma(1/theta, 1)
+        eta.push_back(par[d+i]);
+    }
+
+    vector<double> gxi(d);
+    vector<double> gzeta(d);
+    vector<double> cth(d);
+    
+    // vector< vector<double> > cpar_LT(d);
+    
+    for(i=0;i<d;++i)
+    {
+        cth[i] = par_LT[i][0] * (eta[i]);
+        // cpar_LT[i].push_back(cth[i]);
+        gxi[i] = 1.0 / par_LT[i][0];
+        gzeta[i] = gxi[i] * (1.0 / eta[i] - 1.0 );
+    }
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+
+    NumericMatrix gqvec(d, nq);
+    NumericMatrix cqvec(d, nq);
+	
+    
+    // LTfunc_complex LT;
+    // LT = &LTB_complex;
+    // int err_msg_1;
+    
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], gxi[i], gzeta[i]);
+            cqvec(i,m) = gsl_cdf_gamma_Pinv(xl[m], 1/cth[i], 1);
+            // cqvec(i,m) = qG(xl[m], LT, cpar_LT[i], err_msg_1);
+        }
+    }
+    
+    double den_j = 0;
+    double lden = 0;
+    double ss;
+
+    for(iNN=0;iNN<NN;++iNN)
+    {
+        for(i = 0; i < d; ++i)
+        {
+            th_tmp = par_LT[i][0];
+            u_tmp = tvec(iNN, i);
+            
+            invpsi_i[i] = pow(u_tmp, -th_tmp) - 1.0; 
+            ss = invpsi_i[i];
+            psi1inv_i[i] = - pow(1+ss, -1.0 / th_tmp -1) / th_tmp;
+        }
+            
+        den = 0;                   
+        for(m0=0;m0<nq;++m0)
+        {
+            den_grp = 1.0;
+            for(j=0;j<gsize;++j)  // j is index for groups
+            {
+                den_j = 0;
+                for(m=0;m<nq;++m)
+                {
+                    tem1 = 1.0; 
+                    tem2 = 0;
+                    for(i = grp_start[j]; i < cumugrp[j]; ++i)
+                    {
+                        tem1 *= ( (gqvec(i,m) * cqvec(i,m0) )  / (-psi1inv_i[i]) );
+                        tem2 -= (gqvec(i,m) * cqvec(i,m0) * invpsi_i[i]);
+                    }
+                    den_j += ( tem1 * exp(tem2) * wl[m] ); 
+                }
+                den_grp *= den_j;
+            }
+
+            den += ( den_grp * wl[m0] );  
+        }
+        lden += log(den);
+    }
+    for(i=0;i<24;++i)
+    {
+        Rcpp::Rcout << i << " par =  " << par[i] << std::endl;
+    }
+    // Rcpp::Rcout << " lden = " << lden << std::endl;
     return lden;
 }
 
