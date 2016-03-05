@@ -775,7 +775,7 @@ double LTE1_vector(double s, vector<double> par)
     {
         if( de[i] != 0  &&  th[i] != 0 )
         {
-			psi10_i = (-1.0 / de[i]) * pow(1.0 + pow(s, 1.0/de[i])*th[i], -1.0/th[i] - 1.0) * pow(s, 1.0/de[i] - 1.0);
+            psi10_i = (-1.0 / de[i]) * pow(1.0 + pow(s, 1.0/de[i])*th[i], -1.0/th[i] - 1.0) * pow(s, 1.0/de[i] - 1.0);
             par_i.clear();
             par_i.push_back(de[i]);
             par_i.push_back(th[i]);
@@ -827,6 +827,17 @@ double LTA1(double s, vector<double> par)
     out = exp(-pow(s,1.0/de)) / (-de) * (pow(s, 1.0/de -1.0 )); 
     return out;
 }
+
+#ifdef LTE_V2
+double LTE1(double s, vector<double> par)
+{
+    double out, de, th;
+    de = par[0];
+    th = par[1];
+    out = - pow( (pow(s, (1/de))*th + 1), (-1/th-1)) * ( pow(s, (1/de-1)) / de ); 
+    return out;
+}
+#endif
 
 double LTA1_vector(double s, vector<double> par)
 {
@@ -2671,7 +2682,7 @@ double den_LTE_LTE_s(NumericMatrix tvec, NumericVector grp, NumericVector par, i
             invpsi_i[i] = pow(( pow(u_tmp, (-th_tmp))-1) / th_tmp, de_tmp); 
             ss = invpsi_i[i];
             tem = pow( (pow(ss, (1/de_tmp))*th_tmp + 1), (-1/th_tmp-1)); 
-            psi1inv_i[i] = tem*( pow(ss, (1/de_tmp-1)) / de_tmp );
+            psi1inv_i[i] = - tem*( pow(ss, (1/de_tmp-1)) / de_tmp );
         }
             
         den = 0;                   
@@ -3065,6 +3076,126 @@ double den_LTB_p(NumericMatrix tvec, NumericVector grp, NumericVector par, int n
     return lden;
 }
 
+// Type IV CM models; product decomposition on the auxiliary exponentials
+// [[Rcpp::export]]
+double den_ML_EXP_p(NumericMatrix tvec, NumericVector grp, NumericVector par, int nq)
+{
+    int i, j, m, m0, iNN;
+    int gsize = grp.size();
+    int d = 0;
+    
+    int NN = tvec.nrow(); // sample size
+    
+    vector<int> cumugrp;
+    vector<int> igrp;
+    vector<int> grp_start;
+
+    for(i = 0; i<gsize; ++i)
+    {
+        igrp.push_back((int) grp[i]);
+        d+=grp[i];
+    }
+    
+    NumericVector invpsi_i(d);
+    NumericVector psi1inv_i(d);
+    double tem1 = 1.0;
+    double den = 0;
+    double den_grp = 1.0;
+    double de_tmp, th_tmp, u_tmp, tem, denom;
+
+    vector< vector<double> > par_LT(d);
+    vector<double> eta;
+        
+    std::partial_sum( igrp.begin(), igrp.end(), std::back_inserter(cumugrp));
+	
+    grp_start.push_back(0);
+    for(i=0; i<gsize-1; ++i)
+    {
+        grp_start.push_back(cumugrp[i]);
+    }
+    
+    for(i = 0; i < d; ++i)
+    {
+        par_LT[i].push_back(par[i]);
+        par_LT[i].push_back(par[d+i]);
+        eta.push_back(par[2*d+i]);
+    }
+
+    vector<double> gzeta(d);
+    
+    for(i=0;i<d;++i)
+    {
+        gzeta[i] = 1.0 / eta[i] - 1.0;
+    }
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+
+    NumericMatrix gqvec(d, nq);
+    NumericMatrix cqvec(d, nq);
+	
+    LTfunc_complex LT;
+    LT = &LTE_complex;
+    int err_msg_1;
+    
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], 1.0, gzeta[i]);
+            cqvec(i,m) = qG(xl[m], LT, par_LT[i], err_msg_1);
+        }
+    }
+    
+    double den_j = 0;
+    double lden = 0;
+    double ss;
+
+    for(iNN=0;iNN<NN;++iNN)
+    {
+        denom = 1.0;
+        for(i = 0; i < d; ++i)
+        {
+            de_tmp = par_LT[i][0];
+            th_tmp = par_LT[i][1];
+            u_tmp = tvec(iNN, i);
+            
+            invpsi_i[i] = pow(( pow(u_tmp, (-th_tmp))-1) / th_tmp, de_tmp); 
+            ss = invpsi_i[i];
+            tem = pow( (pow(ss, (1/de_tmp))*th_tmp + 1), (-1/th_tmp-1)); 
+            psi1inv_i[i] = -tem*( pow(ss, (1/de_tmp-1)) / de_tmp );
+            denom *= ( - psi1inv_i[i]);
+        }
+            
+        den = 0;                   
+        for(m0=0;m0<nq;++m0)
+        {
+            den_grp = 1.0;
+            for(j=0;j<gsize;++j)  // j is index for groups
+            {
+                den_j = 0;
+                for(m=0;m<nq;++m)
+                {
+                    tem1 = 1.0; 
+                    for(i = grp_start[j]; i < cumugrp[j]; ++i)
+                    {
+                        tem = cqvec(i,m0) / gqvec(i,m);
+                        tem1 *= (gsl_ran_gamma_pdf(tem * invpsi_i[i], 1.0 / eta[i], 1.0) * tem);
+                    }
+                    den_j += ( tem1 * wl[m] ); 
+                }
+                den_grp *= den_j;
+            }
+            den += ( den_grp * wl[m0] );  
+        }
+        
+        lden += (log(den) - log(denom));
+    }
+    Rcpp::Rcout << " lden = " << lden << std::endl;
+    return lden;
+}
+
 // pairwise Spearman's rho for the improved CM-bi-factor model
 // [[Rcpp::export]]
 NumericVector srho_LTA_LTA_s(NumericMatrix DM, NumericVector par, int nq)
@@ -3303,6 +3434,130 @@ NumericVector srho_LTE_LTE_s(NumericMatrix DM, NumericVector par, int nq)
                                     tem1 = LTA( - log(1-xl[m1]) / (gsig[i1]*gqvec(i1,mn)+csig[i1]*cqvec(i1,mk2)), par_LT[i1]);
                                     tem2 = LTA( - log(1-xl[m2]) / (gsig[i2]*gqvec(i2,mm)+csig[i2]*cqvec(i2,mk2)), par_LT[i2]);
                                     intg += wl[m1] * wl[m2] * wl[mn] * wl[mm] * wl[mk2] * tem1 * tem2;
+                                    //Rcpp::Rcout<< "mu,m1,m2,tem1,tem2,intg " << mu <<" "<<  m1 <<" "<<  m2 <<" "<<  tem1 <<" "<<  tem2  <<" "<<  intg << std::endl;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+            }
+            srho = 12 * intg - 3;
+            intg = 0;
+            out.push_back(srho);
+        }
+    }
+    return out; 
+}
+
+// Spearman rho for IV_ML_EXP_p model
+// [[Rcpp::export]]
+NumericVector srho_ML_EXP_p(NumericMatrix DM, NumericVector par, int nq)
+{
+    // devec thevec are parameters for the Mittag-Leffler LT (LTE)
+    // devec1 are parameters for positive stable LT (LTA)
+    int i, j, i1, i2, m, m0, m1, m2, mk1, mk2, mk;
+    int d = DM.nrow();
+    int p = DM.ncol();
+
+    NumericVector out;
+    NumericMatrix gqvec(d, nq);
+    NumericMatrix cqvec(d, nq);
+    NumericMatrix iqvec(d, nq);
+    
+    double tem1 = 0;
+    double tem2 = 0;
+    double intg = 0;
+    double srho = 0;
+    vector<int> group(d);
+
+    vector< vector<double> > par_LT(d);
+    vector<double> eta;
+    
+    // assigning index for non overlapping groups
+    for(i = 0; i<d; ++i)
+    {
+        for(j = 0; j<p-1; ++j)
+        {
+            if(DM(i,j)==1)
+            {
+                group[i] = j; 
+                // Rcpp::Rcout << group[i] << std::endl;
+                break;
+            }
+        }
+    }
+   
+    for(i = 0; i < d; ++i)
+    {
+        par_LT[i].push_back(par[i]);
+        par_LT[i].push_back(par[d+i]);
+        eta.push_back(par[2*d+i]);
+    }
+
+    vector<double> gzeta(d);
+    
+    for(i=0;i<d;++i)
+    {
+        gzeta[i] = 1.0 / eta[i] - 1.0;
+    }
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+	
+    LTfunc_complex LT;
+    LT = &LTE_complex;
+    int err_msg_1;
+    
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], 1.0, gzeta[i]);
+            cqvec(i,m) = qG(xl[m], LT, par_LT[i], err_msg_1);
+            iqvec(i,m) = gsl_cdf_gamma_Pinv(xl[m], 1.0 / eta[i], 1.0);
+        }
+    }
+    
+    for(i1 = 0; i1 < d-1; ++i1)
+    {
+        for(i2 = i1 + 1; i2 < d; ++i2)
+        {
+            if(group[i1] == group[i2])
+            {
+                for(m0=0;m0<nq;++m0)
+                {
+                    for(mk=0;mk<nq;++mk) // mk for group
+                    {
+                        for(m1=0;m1<nq;++m1)
+                        {
+                            for(m2=0;m2<nq;++m2)
+                            {
+                                tem1 = LTE( gqvec(i1,mk)*iqvec(i1,m1)/cqvec(i1,m0), par_LT[i1], 1.0); // 1.0 is scale parameter
+                                tem2 = LTE( gqvec(i2,mk)*iqvec(i2,m2)/cqvec(i2,m0), par_LT[i2], 1.0);
+                                intg += wl[m0] * wl[mk] * wl[m1] * wl[m2] * tem1 * tem2;
+                                //Rcpp::Rcout<< "mu,m1,m2,tem1,tem2,intg " << mu <<" "<<  m1 <<" "<<  m2 <<" "<<  tem1 <<" "<<  tem2  <<" "<<  intg << std::endl;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for(m0=0;m0<nq;++m0)
+                {
+                    for(mk1=0;mk1<nq;++mk1)
+                    {
+                        for(mk2=0;mk2<nq;++mk2)
+                        {
+                            for(m1=0;m1<nq;++m1)
+                            {
+                                for(m2=0;m2<nq;++m2)
+                                {
+                                    tem1 = LTE( gqvec(i1,mk1)*iqvec(i1,m1)/cqvec(i1,m0), par_LT[i1]);
+                                    tem2 = LTE( gqvec(i2,mk2)*iqvec(i2,m2)/cqvec(i2,m0), par_LT[i2]);
+                                    intg += wl[m0] * wl[mk1] * wl[mk2] * wl[m1] * wl[m2] * tem1 * tem2;
                                     //Rcpp::Rcout<< "mu,m1,m2,tem1,tem2,intg " << mu <<" "<<  m1 <<" "<<  m2 <<" "<<  tem1 <<" "<<  tem2  <<" "<<  intg << std::endl;
                                 }
                             }
