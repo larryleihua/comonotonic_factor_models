@@ -669,6 +669,36 @@ double qG(double u, LTfunc_complex LT, vector<double> par, int& err_msg)
     }
 }
 
+// [[Rcpp::export]]
+double qLTE(double u, NumericVector par)
+{
+    LTfunc_complex LT;
+    double out;
+    int i;
+    int err_msg = 0;
+    int npar = par.size();
+    LT = &LTE_complex;
+    
+    vector<double> _par;
+    
+    for(i=0;i<npar;++i)
+    {
+        _par.push_back(par[i]);
+    }
+    
+    if(u == 0)
+    {
+        out = 0.0;
+    }
+    else
+    {
+        out = qGfromLT(u, LT, _par, err_msg);
+    }
+    // Rcpp::Rcout << out << " error code (1:OK, 2:ERROR) " << err_msg << std::endl;
+    return out;
+}
+
+
 NumericVector qG_LTE(double u, double de, double th)
 {
 	int err_msg;
@@ -3068,11 +3098,6 @@ double den_LTB_p(NumericMatrix tvec, NumericVector grp, NumericVector par, int n
         }
         lden += log(den);
     }
-    for(i=0;i<24;++i)
-    {
-        Rcpp::Rcout << i << " par =  " << par[i] << std::endl;
-    }
-    // Rcpp::Rcout << " lden = " << lden << std::endl;
     return lden;
 }
 
@@ -3192,7 +3217,7 @@ double den_ML_EXP_p(NumericMatrix tvec, NumericVector grp, NumericVector par, in
         
         lden += (log(den) - log(denom));
     }
-    Rcpp::Rcout << " lden = " << lden << std::endl;
+    // Rcpp::Rcout << " lden = " << lden << std::endl;
     return lden;
 }
 
