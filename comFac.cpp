@@ -14,6 +14,7 @@
 #include <gsl/gsl_sf_gamma.h>
 #include <gsl/gsl_sf_hyperg.h>
 #include <boost/math/special_functions/bessel.hpp> // for real arguments
+#include <boost/math/special_functions/beta.hpp>
 
 // to-do:
 // LTI_V2 needs to be redefined, the complex case is done.  
@@ -3051,7 +3052,8 @@ double den_LTB_p(NumericMatrix tvec, NumericVector grp, NumericVector par, int n
     {
         for(m=0; m < nq; ++m)
         {
-            gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], gxi[i], gzeta[i]);
+            // gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], gxi[i], gzeta[i]); //gsl_cdf_beta_Pinv is NOT thread safe
+            gqvec(i,m) = boost::math::ibeta_inv(gxi[i], gzeta[i], xl[m]);
             cqvec(i,m) = gsl_cdf_gamma_Pinv(xl[m], 1/cth[i], 1);
             // cqvec(i,m) = qG(xl[m], LT, cpar_LT[i], err_msg_1);
         }
@@ -3168,7 +3170,8 @@ double den_ML_EXP_p(NumericMatrix tvec, NumericVector grp, NumericVector par, in
     {
         for(m=0; m < nq; ++m)
         {
-            gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], 1.0, gzeta[i]);
+            // gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], 1.0, gzeta[i]);  // gsl_cdf_beta_Pinv is NOT thread safe: there are convergence errors in R parallel
+            gqvec(i,m) = boost::math::ibeta_inv(1.0, gzeta[i], xl[m]);
             cqvec(i,m) = qG(xl[m], LT, par_LT[i], err_msg_1);
         }
     }
@@ -3539,7 +3542,8 @@ NumericVector srho_ML_EXP_p(NumericMatrix DM, NumericVector par, int nq)
     {
         for(m=0; m < nq; ++m)
         {
-            gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], 1.0, gzeta[i]);
+            // gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], 1.0, gzeta[i]); // gsl_cdf_beta_Pinv is NOT thread safe
+            gqvec(i,m) = boost::math::ibeta_inv(1.0, gzeta[i], xl[m]);
             cqvec(i,m) = qG(xl[m], LT, par_LT[i], err_msg_1);
             iqvec(i,m) = gsl_cdf_gamma_Pinv(xl[m], 1.0 / eta[i], 1.0);
         }
