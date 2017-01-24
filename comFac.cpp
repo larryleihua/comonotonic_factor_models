@@ -37,7 +37,7 @@
 #define parMAX 100
 #define parMIN 0.01
 #define TOL 1e-6
-#define MAXIT 1000
+#define MAXIT 900
 
 // [[Rcpp::depends(RcppGSL)]]
 
@@ -712,6 +712,193 @@ NumericVector qG_LTE(double u, double de, double th)
 	out.push_back(tmp);
 	out.push_back(err_msg);
 	return out;
+}
+
+
+// A new method for sampling from LTE(ie, ML-LT)
+// Based on (16) of Rossberg et al (2007)
+// sg is a tuning parameter
+
+// cdf and density based on (16)) of Rossberg et al (2007)
+vector<double> Ff_LTE(double y, double de, double th, double sg)
+{
+    double al_vec[] = {1.0, +5.772157e-1, -6.558781e-1, -4.200264e-2, +1.665386e-1, -4.219773e-2, -9.621972e-3, +7.218943e-3, -1.165168e-3, -2.152417e-4, +1.280503e-4, -2.013485e-5, -1.250493e-6, +1.133027e-6, -2.056338e-7, +6.116095e-9, +5.002008e-9, -1.181275e-9, +1.043427e-10, +7.782263e-12, -3.696806e-12};
+    vector<double> al(al_vec, al_vec + sizeof(al_vec) / sizeof(double) );
+    double t2,t3,t4,t6,t8,t9,t11,t14,t15,t16,t17,t18,t19,t20,t21,t31,t32,t33,t34,t35,t36,t37,t38,t44,t45,t56,t61,t62,t63,t64,t65,t66,t67;
+    double t68,t74,t75,t82,t83,t100,t106,t108,t109,t110,t112,t113,t117,t118,t125,t126,t147,t151,t165,t167,t168,t169,t170,t175,t176,t178,t179,t183,t184,t194,t195,t223,t227,t247,t250,t251,t252,t271,t273,t276,t277,t281,t282,t286,t287,t291,t292,t305,t306,t307,t353;
+    vector<double> Fderi;
+    double cdf = 0.0;
+    double pdf = 0.0;
+    int i=0;
+    vector<double> out;
+   
+    t2 = exp(-sg * y);
+    t3 = 0.1e1 / de;
+    t4 = pow(t2, t3);
+    t6 = 0.1e1 + th * t4;
+    t8 = pow(t6, -0.1e1 / th);
+    t9 = t8 * t4;
+    t11 = 0.1e1 / t6;
+    t14 = t4 * t4;
+    t15 = t8 * t14;
+    t16 = de * de;
+    t17 = 0.1e1 / t16;
+    t18 = sg * sg;
+    t19 = t17 * t18;
+    t20 = t6 * t6;
+    t21 = 0.1e1 / t20;
+    t31 = t14 * t4;
+    t32 = t8 * t31;
+    t33 = t16 * de;
+    t34 = 0.1e1 / t33;
+    t35 = t18 * sg;
+    t36 = t34 * t35;
+    t37 = t20 * t6;
+    t38 = 0.1e1 / t37;
+    t44 = t32 * t34;
+    t45 = t35 * t38;
+    t56 = th * th;
+    t61 = t14 * t14;
+    t62 = t8 * t61;
+    t63 = t16 * t16;
+    t64 = 0.1e1 / t63;
+    t65 = t18 * t18;
+    t66 = t64 * t65;
+    t67 = t20 * t20;
+    t68 = 0.1e1 / t67;
+    t74 = t62 * t64;
+    t75 = t65 * t68;
+    t82 = t32 * t64;
+    t83 = t65 * t38;
+    t100 = t56 * th;
+    t106 = t8 * t61 * t4;
+    t108 = 0.1e1 / t63 / de;
+    t109 = t106 * t108;
+    t110 = t65 * sg;
+    t112 = 0.1e1 / t67 / t6;
+    t113 = t110 * t112;
+    t117 = t62 * t108;
+    t118 = t110 * t68;
+    t125 = t32 * t108;
+    t126 = t110 * t38;
+    t147 = t56 * t56;
+    t151 = t108 * t110;
+    t165 = 0.10e2 * t109 * t113 * th - 0.60e2 * t117 * t118 * th + 0.35e2 * t109 * t113 * t56 + 0.75e2 * t125 * t126 * th - 0.110e3 * t117 * t118 * t56 + 0.50e2 * t109 * t113 * t100 - 0.15e2 * t15 * t108 * t110 * t21 * th + 0.50e2 * t125 * t126 * t56 - 0.60e2 * t117 * t118 * t100 + 0.24e2 * t109 * t113 * t147 - 0.10e2 * t62 * t151 * t68 + 0.25e2 * t32 * t151 * t38 - 0.15e2 * t15 * t151 * t21 + t9 * t151 * t11 + t106 * t151 * t112;
+    t167 = 0.1e1 / t63 / t16;
+    t168 = t106 * t167;
+    t169 = t65 * t18;
+    t170 = t169 * t112;
+    t175 = t8 * t61 * t14;
+    t176 = t175 * t167;
+    t178 = 0.1e1 / t67 / t20;
+    t179 = t169 * t178;
+    t183 = t62 * t167;
+    t184 = t169 * t68;
+    t194 = t32 * t167;
+    t195 = t169 * t38;
+    t223 = t147 * th;
+    t227 = t167 * t169;
+    t247 = -0.180e3 * t194 * t195 * t56 + 0.390e3 * t183 * t184 * t100 - 0.360e3 * t168 * t170 * t147 + 0.120e3 * t176 * t179 * t223 - t9 * t227 * t11 + 0.65e2 * t62 * t227 * t68 - 0.90e2 * t32 * t227 * t38 + 0.31e2 * t15 * t227 * t21 + 0.15e2 * t176 * t179 * th - 0.15e2 * t106 * t227 * t112 + t175 * t227 * t178;
+    t250 = 0.1e1 / t63 / t33;
+    t251 = t65 * t35;
+    t252 = t250 * t251;
+    t271 = t8 * t61 * t31;
+    t273 = 0.1e1 / t67 / t37;
+    t276 = t106 * t250;
+    t277 = t251 * t112;
+    t281 = t175 * t250;
+    t282 = t251 * t178;
+    t286 = t271 * t250;
+    t287 = t251 * t273;
+    t291 = t62 * t250;
+    t292 = t251 * t68;
+    t305 = t9 * t252 * t11 - 0.350e3 * t62 * t252 * t68 + 0.301e3 * t32 * t252 * t38 - 0.63e2 * t15 * t252 * t21 + 0.140e3 * t106 * t252 * t112 - 0.21e2 * t175 * t252 * t178 + t271 * t252 * t273 + 0.1400e4 * t276 * t277 * th - 0.1785e4 * t281 * t282 * t56 + 0.735e3 * t286 * t287 * t100 - 0.2100e4 * t291 * t292 * th + 0.4900e4 * t276 * t277 * t56 - 0.4725e4 * t281 * t282 * t100 + 0.1624e4 * t286 * t287 * t147;
+    t306 = t32 * t250;
+    t307 = t251 * t38;
+    t353 = 0.903e3 * t306 * t307 * th - 0.3850e4 * t291 * t292 * t56 + 0.7000e4 * t276 * t277 * t100 - 0.5754e4 * t281 * t282 * t147 + 0.1764e4 * t286 * t287 * t223 - 0.63e2 * t15 * t250 * t251 * t21 * th + 0.602e3 * t306 * t307 * t56 - 0.2100e4 * t291 * t292 * t100 + 0.3360e4 * t276 * t277 * t147 - 0.2520e4 * t281 * t282 * t223 + 0.720e3 * t286 * t287 * t147 * t56 - 0.315e3 * t281 * t282 * th + 0.175e3 * t286 * t287 * t56 + 0.21e2 * t286 * t287 * th;
+    Fderi.push_back(t8);
+    Fderi.push_back(t9 * t11 * t3 * sg);
+    Fderi.push_back(t15 * t19 * t21 - t9 * t19 * t11 + t15 * t17 * t18 * t21 * th);
+    Fderi.push_back(t32 * t36 * t38 - 0.3e1 * t15 * t36 * t21 + 0.3e1 * t44 * t45 * th + t9 * t36 * t11 - 0.3e1 * t15 * t34 * t35 * t21 * th + 0.2e1 * t44 * t45 * t56);
+    Fderi.push_back(t62 * t66 * t68 - 0.6e1 * t32 * t66 * t38 + 0.6e1 * t74 * t75 * th + 0.7e1 * t15 * t66 * t21 - 0.18e2 * t82 * t83 * th + 0.11e2 * t74 * t75 * t56 - t9 * t66 * t11 + 0.7e1 * t15 * t64 * t65 * t21 * th - 0.12e2 * t82 * t83 * t56 + 0.6e1 * t74 * t75 * t100);
+    Fderi.push_back(t165);
+    Fderi.push_back(-0.150e3 * t168 * t170 * th + 0.85e2 * t176 * t179 * t56 + 0.390e3 * t183 * t184 * th - 0.525e3 * t168 * t170 * t56 + 0.225e3 * t176 * t179 * t100 - 0.270e3 * t194 * t195 * th + 0.715e3 * t183 * t184 * t56 - 0.750e3 * t168 * t170 * t100 + 0.274e3 * t176 * t179 * t147 + 0.31e2 * t15 * t167 * t169 * t21 * th + t247);
+    Fderi.push_back(t305 + t353);
+    
+    for(i=0;i<7;++i)
+    {
+        cdf += al[i]*Fderi[i]/pow(sg,i);
+        pdf += al[i]*Fderi[i+1]/pow(sg,i);
+    }
+    
+    out.push_back(cdf);
+    out.push_back(pdf);
+        
+    return out;
+}
+
+
+double qGfromLTE(double v, vector<double> par, double sg)
+{
+    double de = par[0];
+    double th = par[1];
+    
+    const double tol = TOL;
+    //double CDF = v + 2*tol;
+    double CDF = 0.5;
+    double CDF1 = 10000.0;
+    double diff = 0.1;
+    double lower, upper;
+    double t;
+    vector<double> Ff;
+    
+    int maxiter = MAXIT;
+    int kount = 0;
+
+    lower = 0;
+    upper = qMAX;
+    t = 1000000;
+    
+    Ff = Ff_LTE(t, de, th, sg);
+    CDF = Ff[0];
+    CDF1 = Ff[1];
+    
+    while ( kount < maxiter && std::abs(v - CDF) > tol )
+    {
+        kount += 1;
+        if( isnan(CDF) || isnan(CDF1) )
+        {
+            diff /=-2;
+        }
+        else
+        {
+            diff = (CDF-v) / CDF1;
+        }	
+        t = t - diff; 
+        
+        if (t < lower || t > upper)
+        {
+            t = 0.5 * (lower + upper);
+        }
+        
+        Ff = Ff_LTE(t, de, th, sg);
+        
+        CDF = Ff[0];
+        CDF1 = Ff[1];
+        
+        Rcpp::Rcout << kount << " | " << " t: " << t << " | " << CDF << " | " << CDF1 << std::endl;
+
+        if( CDF > v )
+        {
+            upper = t;
+        }
+        else
+        {
+            lower = t;
+        }
+    }
+    
+    return exp(t*sg);
 }
 
 
@@ -3172,7 +3359,14 @@ double den_ML_EXP_p(NumericMatrix tvec, NumericVector grp, NumericVector par, in
         {
             // gqvec(i,m) = gsl_cdf_beta_Pinv(xl[m], 1.0, gzeta[i]);  // gsl_cdf_beta_Pinv is NOT thread safe: there are convergence errors in R parallel
             gqvec(i,m) = boost::math::ibeta_inv(1.0, gzeta[i], xl[m]);
-            cqvec(i,m) = qG(xl[m], LT, par_LT[i], err_msg_1);
+            if(xl[m]<0.9)
+            {
+                cqvec(i,m) = qG(xl[m], LT, par_LT[i], err_msg_1);
+            }
+            else  // qGfromLTE is better for upper quantiles
+            {
+                cqvec(i,m) = qGfromLTE(xl[m], par_LT[i], 100.0);
+            }
         }
     }
     
@@ -3723,6 +3917,117 @@ NumericVector srho_LTE_LTA(NumericMatrix DM, NumericVector par, int nq)
 
 // pairwise Spearman's rho
 // [[Rcpp::export]]
+NumericVector srho_LTB_LTB(NumericMatrix DM, NumericVector par, int nq)
+{
+    int i, j, i1, i2, m, m1, m2, mm, mn, mk1, mk2;
+    int d = DM.nrow();
+    int p = DM.ncol();
+    int err_msg;
+    
+    NumericVector out;
+    NumericMatrix qvec1(d, nq);
+    NumericMatrix qvec2(d, nq);
+    
+    double tem1 = 0;
+    double tem2 = 0;
+    double intg = 0;
+    double srho = 0;
+    vector<int> group(d);
+
+    vector< vector<double> > par_1_i(d);
+    vector< vector<double> > par_2_i(d);
+    
+    // assigning index for non overlapping groups
+    for(i = 0; i<d; ++i)
+    {
+        for(j = 0; j<p-1; ++j)
+        {
+            if(DM(i,j)==1)
+            {
+                group[i] = j; 
+                break;
+            }
+        }
+    }
+   
+    for(i = 0; i < d; ++i)
+    {
+        par_1_i[i].push_back(par[i]);
+        par_2_i[i].push_back(par[i+d]);
+    }
+    
+    LTfunc_complex LT_complex_1, LT_complex_2;
+    LT_complex_1 = &LTB_complex;
+    LT_complex_2 = &LTB_complex;
+    
+    /// setup Gaussian quadrature
+    vector<double> xl(nq), wl(nq);
+    gauleg(nq, xl, wl);
+    
+    for(i=0; i < d; ++i)
+    {
+        for(m=0; m < nq; ++m)
+        {
+            qvec1(i,m) = qG(xl[m], LT_complex_1, par_1_i[i], err_msg);
+            qvec2(i,m) = qG(xl[m], LT_complex_2, par_2_i[i], err_msg);
+        }
+    }
+    
+    for(i1 = 0; i1 < d-1; ++i1)
+    {
+        for(i2 = i1 + 1; i2 < d; ++i2)
+        {
+            if(group[i1] == group[i2])
+            {
+                for(mk1=0;mk1<nq;++mk1)
+                {
+                    for(mk2=0;mk2<nq;++mk2)
+                    {
+                        for(m1=0;m1<nq;++m1)
+                        {
+                            for(m2=0;m2<nq;++m2)
+                            {
+                                tem1 = LTB_LTB( - log(1-xl[m1]) / (qvec1(i1,mk1)+qvec2(i1,mk2)), par_1_i[i1], par_2_i[i1]);
+                                tem2 = LTB_LTB( - log(1-xl[m2]) / (qvec1(i2,mk1)+qvec2(i2,mk2)), par_1_i[i2], par_2_i[i2]);
+                                intg += wl[m1] * wl[m2] * wl[mk1] * wl[mk2] * tem1 * tem2;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                for(mn=0;mn<nq;++mn)
+                {
+                    for(mm=0;mm<nq;++mm)
+                    {
+                        for(mk2=0;mk2<nq;++mk2)
+                        {
+                            for(m1=0;m1<nq;++m1)
+                            {
+                                for(m2=0;m2<nq;++m2)
+                                {
+                                    tem1 = LTB_LTB( - log(1-xl[m1]) / (qvec1(i1,mn)+qvec2(i1,mk2)), par_1_i[i1], par_2_i[i1]);
+                                    tem2 = LTB_LTB( - log(1-xl[m2]) / (qvec1(i2,mm)+qvec2(i2,mk2)), par_1_i[i2], par_2_i[i2]);
+                                    intg += wl[m1] * wl[m2] * wl[mn] * wl[mm] * wl[mk2] * tem1 * tem2;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+            }
+            srho = 12 * intg - 3;
+            intg = 0;
+            out.push_back(srho);
+        }
+    }
+    return out; 
+}
+
+
+// pairwise Spearman's rho
+// [[Rcpp::export]]
 NumericVector srho_LTE_Gaussian(NumericMatrix DM, NumericVector par, int nq)
 {
     // devec thevec are parameters for the Mittag-Leffler LT (LTE)
@@ -3989,9 +4294,9 @@ double den_LTB_LTB_bifact(NumericVector tvec, NumericMatrix DM, NumericVector pa
 
 
 // ad-hoc case for overlap LTB and LTB
+// [[Rcpp::export]]
 double den_LTB_LTB(NumericVector tvec, NumericMatrix DM, NumericVector par, int nq)
 {
-    
     int i, j, m, m1, m2;
     int f = DM.ncol();
     int d = DM.nrow();
